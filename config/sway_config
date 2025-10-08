@@ -13,42 +13,43 @@ output Virtual-1 {
     bg #ffffff solid_color
 }
 
-mark left
-mark right
+workspace 1 layout splitv
 
 for_window [title="camera1"] {
-    move window to mark left
+    move to workspace 1
+    split h
+}
+
 #    floating enable
 #    sticky enable
 #    move position 0 0
 #    resize set 540
+
+for_window [title="camera3"] {
+    move to workspace 1
+    split h
 }
 
-for_window [title="camera2"] {
-    layout splith
-    move window to mark left
 #    floating enable
 #    sticky enable
 #    move position 0 320
 #    resize set 540
-}
 
-for_window [title="camera3"] {
-    move window to mark right
 #    floating enable
 #    sticky enable
 #    move position 0 640
 #    resize set 540
-}
 
-for_window [title="camera4"] {
-    layout splith
-    move window to mark right
+for_window [title="camera1"] move left
+for_window [title="camera2"] move right
+for_window [title="camera3"] move down
+for_window [title="camera4"] move right
+
 #    floating enable
 #    sticky enable
 #    move position 0 960
 #    resize set 540
-}
+
 
 # Start stream viewer
 exec_always --no-startup-id /opt/stream-viewer
