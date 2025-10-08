@@ -15,28 +15,24 @@ for_window [title="camera1"] {
     floating enable
     sticky enable
     move position 0 0
-    resize set width 1080
 }
 
 for_window [title="camera2"] {
     floating enable
     sticky enable
     move position 0 320
-    resize set width 1080
 }
 
 for_window [title="camera3"] {
     floating enable
     sticky enable
     move position 0 640
-    resize set height 540
 }
 
 for_window [title="camera4"] {
     floating enable
     sticky enable
     move position 0 960
-    resize set height 540
 }
 
 # Start stream viewer
