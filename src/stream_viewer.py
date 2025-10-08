@@ -70,10 +70,10 @@ class StreamViewer:
         self.mpv_instances: Dict[str, subprocess.Popen] = {}
         self.running = False
         self.config_path = config_path
-        self.sway_config_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            'config', 'sway_config.in'
-        )
+        # Store paths for template and generated config
+        config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config')
+        self.template_path = os.path.join(config_dir, 'sway_config_template.in')
+        self.sway_config_path = os.path.join(config_dir, 'sway_config.in')
         
         # Load configuration if provided
         if config_path and os.path.exists(config_path):
@@ -95,15 +95,9 @@ class StreamViewer:
         config_dir = os.path.dirname(self.sway_config_path)
         os.makedirs(config_dir, exist_ok=True)
         
-        # Path to the template file
-        template_path = os.path.join(
-            os.path.dirname(self.sway_config_path),
-            'sway_config_template.in'
-        )
-        
         # Read the template file if it exists, otherwise use default config
         try:
-            with open(template_path, 'r') as f:
+            with open(self.template_path, 'r') as f:
                 config_content = f.read()
         except FileNotFoundError:
             logger.warning(f"Template file not found at {template_path}, using default config")
