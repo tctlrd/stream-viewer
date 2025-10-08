@@ -233,7 +233,7 @@ class StreamViewer:
                 '--title=' + stream.id,
                 '--msg-level=all=info',
                 '--log-file=' + log_file,
-                '--geometry=' + f'{stream.position.width}x{stream.position.height}+{stream.position.x}+{stream.position.y}',
+#                '--geometry=' + f'{stream.position.width}x{stream.position.height}+{stream.position.x}+{stream.position.y}',
                 '--window-scale=1.0',
                 '--no-keepaspect-window',
                 '--window-minimized=no',
