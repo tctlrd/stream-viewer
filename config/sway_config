@@ -1,13 +1,12 @@
 # Basic Sway Configuration
 set $mod Mod4
 
-default_orientation vertical
+default_orientation horizontal
 default_border none
 default_floating_border none
 
 focus_follows_mouse no
 floating_maximum_size 540 x 540
-workspace_layout tabbed
 
 #swaybg_command -
 
