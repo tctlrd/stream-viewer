@@ -246,10 +246,6 @@ class StreamViewer:
             # Add hardware decoding if specified
             if stream.hwdec:
                 cmd.extend(['--hwdec=' + stream.hwdec])
-                
-            # Add FPS if specified
-            if stream.fps:
-                cmd.extend(['--fps=' + str(stream.fps)])
             
             logger.info(f"Starting MPV with command: {' '.join(cmd)}")
             

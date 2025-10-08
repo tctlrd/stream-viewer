@@ -14,7 +14,6 @@
     {
       "id": "camera1",
       "url": "rtsp://user:pass@10.0.0.201:554/Streaming/Channels/102",
-      "fps": 15,
       "hwdec": "auto",
       "position": {
         "x": 0,
@@ -30,7 +29,6 @@
     {
       "id": "camera2",
       "url": "rtsp://user:pass@10.0.0.202:554/Streaming/Channels/102",
-      "fps": 15,
       "hwdec": "auto",
       "position": {
         "x": 960,
@@ -46,7 +44,6 @@
     {
       "id": "camera3",
       "url": "rtsp://user:pass@10.0.0.204:554/Streaming/Channels/102",
-      "fps": 15,
       "hwdec": "auto",
       "position": {
         "x": 0,
@@ -62,7 +59,6 @@
     {
       "id": "camera4",
       "url": "rtsp://user:pass@10.0.0.205:554/Streaming/Channels/102",
-      "fps": 15,
       "hwdec": "auto",
       "position": {
         "x": 960,
