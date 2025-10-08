@@ -15,7 +15,7 @@ output Virtual-1 {
 for_window [title="camera1"] {
     floating enable
     sticky enable
-    move position 0 0
+    move position -200 0
     resize set 540
 }
 
