@@ -11,31 +11,6 @@ output Virtual-1 {
     bg #ffffff solid_color
 }
 
-# Stream viewer window rules with explicit positioning
-for_window [title="camera1"] {
-    floating enable
-    sticky enable
-    move position 0 0
-}
-
-for_window [title="camera2"] {
-    floating enable
-    sticky enable
-    move position 0 320
-}
-
-for_window [title="camera3"] {
-    floating enable
-    sticky enable
-    move position 0 640
-}
-
-for_window [title="camera4"] {
-    floating enable
-    sticky enable
-    move position 0 960
-}
-
 # Start stream viewer
 exec_always --no-startup-id /opt/stream-viewer
 #exec /opt/stream-viewer
