@@ -263,7 +263,7 @@ class StreamViewer:
                 time.sleep(0.5)
                 
                 # Apply Sway window rules
-                self._apply_sway_rules(stream)
+                # self._apply_sway_rules(stream)
                 
                 # Check if process started successfully
                 time.sleep(1)  # Give it more time to fail
@@ -456,30 +456,6 @@ class StreamViewer:
             self.stop_all()
             logger.info("Stream Viewer stopped")
 
-def install_i3ipc() -> bool:
-    """Install i3ipc package if not already installed.
-    
-    Returns:
-        bool: True if i3ipc is available or was installed successfully
-    """
-    try:
-        import i3ipc
-        return True
-    except ImportError:
-        logger.warning("i3ipc is required for Sway window management")
-        try:
-            import sys
-            import subprocess
-            
-            logger.info("Installing i3ipc...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "i3ipc"])
-            import i3ipc  # Try importing again
-            logger.info("Successfully installed i3ipc")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to install i3ipc: {e}")
-            return False
-
 def main():
     """Main entry point."""
     import argparse
@@ -516,9 +492,6 @@ def main():
     
     # Check for Sway/i3 environment if not explicitly disabled
     use_sway = not args.no_sway and os.environ.get('SWAYSOCK') is not None
-    
-    if use_sway and not install_i3ipc():
-        logger.warning("Running without Sway window management")
     
     # Run the viewer
     try:
