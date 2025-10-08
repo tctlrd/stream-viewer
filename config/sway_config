@@ -23,7 +23,7 @@ for_window [title="camera1"] {
 #    resize set 540
 
 for_window [title="camera3"] {
-    split hv
+    split v
 }
 
 #    floating enable
