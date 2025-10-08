@@ -240,7 +240,6 @@ class StreamViewer:
                 '--no-keepaspect-window',
                 '--window-minimized=no',
                 '--no-window-dragging',
-                '--no-window-focus',
                 stream.url
             ]
             
