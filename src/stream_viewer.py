@@ -98,8 +98,6 @@ class StreamConfig:
 class SwayLayoutConfig:
     """Sway-specific layout configuration."""
     workspace: str = "streams"
-    gaps_outer: int = 5
-    gaps_inner: int = 5
 
 @dataclass
 class LayoutConfig:
@@ -361,70 +359,66 @@ class StreamViewer:
             self.stop_stream(stream_id)
                 
     def _apply_sway_rules(self, stream: StreamConfig) -> None:
-        """Apply Sway window rules for a stream.
-        
-        Args:
-            stream: The stream configuration
-        """
         try:
             import i3ipc
-            
-            # Connect to Sway
             sway = i3ipc.Connection()
             
-            # Get the window ID for this stream
+            # Wait a bit longer for the window to appear
+            max_attempts = 10
             window_id = None
-            for _ in range(10):  # Try for up to 5 seconds
-                windows = sway.get_tree().leaves()
-                logger.warning(f"found windows: {windows}")
-                for window in windows:
-                    if window.name == stream.id:
-                        window_id = window.window
-                        break
-                if window_id is not None:
-                    break
-                time.sleep(0.5)
             
-            if window_id is None:
+            for attempt in range(max_attempts):
+                try:
+                    # Get all windows
+                    windows = sway.get_tree().leaves()
+                    logger.debug(f"Found {len(windows)} windows")
+                    
+                    for window in windows:
+                        # Debug: Print window details
+                        logger.debug(f"Window: name='{window.name}' class='{window.window_class}' title='{window.window_title}'")
+                        
+                        # Try different properties to match the window
+                        if (window.name == stream.id or 
+                            window.window_title == stream.id or 
+                            (hasattr(window, 'window_properties') and 
+                            window.window_properties.get('title') == stream.id)):
+                            window_id = window.window
+                            logger.info(f"Found window for {stream.id}: {window_id}")
+                            break
+                    
+                    if window_id:
+                        break
+                        
+                    time.sleep(0.5)
+                    
+                except Exception as e:
+                    logger.warning(f"Error checking windows (attempt {attempt + 1}): {e}")
+                    time.sleep(0.5)
+            
+            if not window_id:
                 logger.warning(f"Could not find window for stream {stream.id}")
                 return
             
-            # Build Sway commands
-            commands = []
-            
-            # Move to workspace if specified
-            if stream.sway.workspace or self.layout.sway.workspace:
-                workspace = stream.sway.workspace or self.layout.sway.workspace
-                commands.append(f'[con_id={window_id}] move container to workspace {workspace}')
-            
-            # Set floating mode if needed
-            if stream.sway.floating:
-                commands.append(f'[con_id={window_id}] floating enable')
-            
-            # Set sticky if needed
-            if stream.sway.sticky:
-                commands.append(f'[con_id={window_id}] sticky enable')
-            
-            # Apply position and size
-            commands.extend([
+            # Build and execute Sway commands
+            commands = [
+                f'[con_id={window_id}] floating enable',
+                f'[con_id={window_id}] sticky enable',
+                f'[con_id={window_id}] border none',
                 f'[con_id={window_id}] move position {stream.position.x} {stream.position.y}',
-                f'[con_id={window_id}] resize set {stream.position.width} {stream.position.height}',
-                f'[con_id={window_id}] border pixel 1',
-                f'[con_id={window_id}] gaps outer {self.layout.sway.gaps_outer}px',
-                f'[con_id={window_id}] gaps inner {self.layout.sway.gaps_inner}px'
-            ])
+                f'[con_id={window_id}] resize set {stream.position.width} {stream.position.height}'
+            ]
             
-            # Execute all commands
             for cmd in commands:
-                sway.command(cmd)
-            
-            logger.debug(f"Applied Sway rules for {stream.id}")
+                try:
+                    result = sway.command(cmd)
+                    logger.debug(f"Command '{cmd}' result: {result}")
+                except Exception as e:
+                    logger.error(f"Error executing command '{cmd}': {e}")
             
         except ImportError:
             logger.warning("i3ipc not installed. Sway window management disabled.")
-            logger.info("Install it with: pip install i3ipc")
         except Exception as e:
-            logger.error(f"Error applying Sway rules: {e}")
+            logger.error(f"Error in _apply_sway_rules: {e}", exc_info=True)
     
     def _handle_signal(self, signum, frame) -> None:
         """Handle termination signals."""

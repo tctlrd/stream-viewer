@@ -12,35 +12,31 @@ output Virtual-1 {
 
 # Stream viewer window rules with explicit positioning
 for_window [title="camera1"] {
-#    floating enable
-#    sticky enable
-#    border pixel 1
-#    move position 0 0
-#    resize set 960 540
+    floating enable
+    sticky enable
+    move position 0 0
+    resize set 960 540
 }
 
 for_window [title="camera2"] {
-#    floating enable
-#    sticky enable
-#    border pixel 1
-#    move position 960 0
-#    resize set 960 540
+    floating enable
+    sticky enable
+    move position 960 0
+    resize set 960 540
 }
 
 for_window [title="camera3"] {
-#    floating enable
-#    sticky enable
-#    border pixel 1
-#    move position 0 540
-#    resize set 960 540
+    floating enable
+    sticky enable
+    move position 0 540
+    resize set 960 540
 }
 
 for_window [title="camera4"] {
-#    floating enable
-#    sticky enable
-#    border pixel 1
-#    move position 960 540
-#    resize set 960 540
+    floating enable
+    sticky enable
+    move position 960 540
+    resize set 960 540
 }
 
 # Start stream viewer
