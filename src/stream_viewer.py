@@ -164,11 +164,7 @@ for_window [title="{stream_id}"] {{
         cmd = [
             'swaymsg',
             f'[title="{stream_id}"]',
-            'floating', 'enable',
-            'sticky', 'enable',
-            'border', 'none',
-            'move', 'position', str(pos.x), str(pos.y),
-            'resize', 'set', str(pos.width), str(pos.height)
+            'move', 'position', str(pos.x), str(pos.y)
         ]
         
         try:
