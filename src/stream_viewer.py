@@ -376,6 +376,7 @@ class StreamViewer:
             window_id = None
             for _ in range(10):  # Try for up to 5 seconds
                 windows = sway.get_tree().leaves()
+                logger.warning(f"found windows: {windows}")
                 for window in windows:
                     if window.name == stream.id:
                         window_id = window.window
