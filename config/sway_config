@@ -40,10 +40,7 @@ for_window [title="camera3"] {
 #    move position 0 640
 #    resize set 540
 
-for_window [title="camera1"] move left
-for_window [title="camera2"] move right
-for_window [title="camera3"] move down
-for_window [title="camera4"] move right
+#for_window [title="camera1"] move left
 
 #    floating enable
 #    sticky enable
