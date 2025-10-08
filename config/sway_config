@@ -17,7 +17,7 @@ workspace 1 layout splitv
 
 for_window [title="camera1"] {
     move to workspace 1
-    move right
+    split h
 }
 
 #    floating enable
@@ -27,7 +27,7 @@ for_window [title="camera1"] {
 
 for_window [title="camera3"] {
     move to workspace 1
-    move left
+    split h
 }
 
 #    floating enable
@@ -40,7 +40,8 @@ for_window [title="camera3"] {
 #    move position 0 640
 #    resize set 540
 
-#for_window [title="camera1"] move left
+for_window [title="camera2"] move up
+for_window [title="camera4"] move down
 
 #    floating enable
 #    sticky enable
