@@ -211,7 +211,6 @@ class StreamViewer:
             return
         
         self.running = True
-        self.calculate_layout()
         
         # Start each stream with a small delay between them
         for i, (stream_id, stream) in enumerate(self.streams.items()):
