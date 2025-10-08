@@ -1,8 +1,8 @@
 # Basic Sway Configuration
 set $mod Mod1
 
-default_border none
-default_floating_border none
+#default_border none
+#default_floating_border none
 focus_follows_mouse no
 
 #swaybg_command -
