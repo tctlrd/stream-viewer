@@ -17,7 +17,7 @@ workspace 1 layout splitv
 
 for_window [title="camera1"] {
     move to workspace 1
-    split h
+    move right
 }
 
 #    floating enable
@@ -27,7 +27,7 @@ for_window [title="camera1"] {
 
 for_window [title="camera3"] {
     move to workspace 1
-    split h
+    move left
 }
 
 #    floating enable
