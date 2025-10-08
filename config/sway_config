@@ -1,10 +1,15 @@
 # Basic Sway Configuration
 set $mod Mod4
 
-#swaybg_command -
-
+default_orientation vertical
 default_border none
 default_floating_border none
+
+focus_follows_mouse no
+floating_maximum_size 540 x 540
+workspace_layout tabbed
+
+#swaybg_command -
 
 output Virtual-1 {
     mode 1920x1080
@@ -13,31 +18,31 @@ output Virtual-1 {
 }
 
 for_window [title="camera1"] {
-    floating enable
-    sticky enable
-    move position 500 0
-    resize set 540
+#    floating enable
+#    sticky enable
+#    move position 0 0
+#    resize set 540
 }
 
 for_window [title="camera2"] {
-    floating enable
-    sticky enable
-    move position 0 320
-    resize set 540
+#    floating enable
+#    sticky enable
+#    move position 0 320
+#    resize set 540
 }
 
 for_window [title="camera3"] {
-    floating enable
-    sticky enable
-    move position 0 640
-    resize set 540
+#    floating enable
+#    sticky enable
+#    move position 0 640
+#    resize set 540
 }
 
 for_window [title="camera4"] {
-    floating enable
-    sticky enable
-    move position 0 960
-    resize set 540
+#    floating enable
+#    sticky enable
+#    move position 0 960
+#    resize set 540
 }
 
 # Start stream viewer
