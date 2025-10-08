@@ -118,7 +118,6 @@ class StreamViewer:
                 '--msg-level=all=info',
                 '--log-file=' + log_file,
                 '--window-scale=1.0',
-                '--no-keepaspect-window',
                 '--window-minimized=no',
                 '--no-window-dragging',
                 stream.url
