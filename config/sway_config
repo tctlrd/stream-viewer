@@ -13,7 +13,7 @@ output Virtual-1 {
     bg #ffffff solid_color
 }
 
-workspace 1 layout splitv
+workspace 1 layout splith
 
 for_window [title="camera1"] {
     split h
