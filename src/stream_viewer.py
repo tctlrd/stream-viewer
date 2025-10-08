@@ -120,6 +120,7 @@ class StreamViewer:
                 '--window-scale=1.0',
                 '--window-minimized=no',
                 '--no-window-dragging',
+                '--geometry=' + f'{stream.position.width}x{stream.position.height}+{stream.position.x}+{stream.position.y}',
                 stream.url
             ]
             

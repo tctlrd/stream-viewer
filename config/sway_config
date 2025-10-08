@@ -19,23 +19,3 @@ for_window [app_id="mpv"] {
     floating enable
     sticky enable
 }
-
-for_window [title="camera1"] {
-    resize set 540
-    move position 0 0
-}
-
-for_window [title="camera2"] {
-    resize set 540
-    move position 540 0
-}
-
-for_window [title="camera3"] {
-    resize set 540
-    move position 0 640
-}
-
-for_window [title="camera4"] {
-    resize set 540
-    move position 540 640
-}
