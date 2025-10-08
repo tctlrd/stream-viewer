@@ -72,7 +72,7 @@ class StreamViewer:
         self.config_path = config_path
         self.sway_config_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            'config', 'generated_sway_config'
+            'config', 'sway_config.in'
         )
         
         # Load configuration if provided
