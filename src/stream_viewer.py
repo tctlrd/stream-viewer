@@ -110,9 +110,18 @@ class StreamViewer:
                 'mpv',
                 '--no-config',
                 '--no-audio',
+                '--no-osc',
+                '--no-osd-bar',
+                '--no-input-default-bindings',
+                '--input-vo-keyboard=no',
                 '--title=' + stream.id,
                 '--msg-level=all=info',
                 '--log-file=' + log_file,
+                '--geometry=' + f'{stream.position.width}x{stream.position.height}+{stream.position.x}+{stream.position.y}',
+                '--window-scale=1.0',
+                '--no-keepaspect-window',
+                '--window-minimized=no',
+                '--no-window-dragging',
                 stream.url
             ]
             
