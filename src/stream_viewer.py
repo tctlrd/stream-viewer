@@ -130,15 +130,6 @@ output * {
         
         logger.info(f"Generated Sway configuration at {self.sway_config_path}")
         
-        # Reload Sway to apply new config
-        try:
-            subprocess.run(['swaymsg', 'reload'], check=True)
-            logger.info("Reloaded Sway configuration")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to reload Sway: {e}")
-        except FileNotFoundError:
-            logger.error("Could not reload Sway: 'swaymsg' command not found")
-        
     def load_config(self, config_path: str) -> bool:
         """Load stream configuration from a JSON file.
         
