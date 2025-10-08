@@ -129,7 +129,7 @@ output * {
             f.write(config_content)
         
         logger.info(f"Generated Sway configuration at {self.sway_config_path}")
-        
+
     def load_config(self, config_path: str) -> bool:
         """Load stream configuration from a JSON file.
         
@@ -201,6 +201,8 @@ output * {
                 '--window-scale=1.0',
                 '--window-minimized=no',
                 '--no-window-dragging',
+                '--geometry',
+                f'{stream.position.x},{stream.position.y}',
                 stream.url
             ]
             
