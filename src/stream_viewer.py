@@ -84,8 +84,11 @@ class StreamViewer:
             # Load stream configs
             if 'streams' in config and isinstance(config['streams'], list):
                 for stream_cfg in config['streams']:
+                    position_cfg = stream_cfg.pop('position', {})
+                    
                     stream = StreamConfig(
                         **stream_cfg,
+                        position=PositionConfig(**position_cfg),
                     )
                     self.streams[stream.id] = stream
 
