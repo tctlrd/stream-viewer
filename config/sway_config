@@ -1,5 +1,5 @@
 # Basic Sway Configuration
-set $mod Mod4
+set $mod Mod1
 
 default_border none
 default_floating_border none
