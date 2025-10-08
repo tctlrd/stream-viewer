@@ -1,13 +1,14 @@
 # Basic Sway Configuration
 set $mod Mod4
 
-swaybg_command -
+#swaybg_command -
 default_border none
 default_floating_border none
 
 output Virtual-1 {
     mode 1920x1080
     transform 90
+    bg white
 }
 
 # Stream viewer window rules with explicit positioning
