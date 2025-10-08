@@ -15,7 +15,7 @@ output Virtual-1 {
 
 exec_always --no-startup-id /opt/stream-viewer
 
-for_window [visible="true"] {
+for_window [app_id="mpv"] {
     floating enable
     sticky enable
 }
