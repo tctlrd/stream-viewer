@@ -8,7 +8,7 @@ default_floating_border none
 output Virtual-1 {
     mode 1920x1080
     transform 90
-    bg white
+    bg white solid_color
 }
 
 # Stream viewer window rules with explicit positioning
