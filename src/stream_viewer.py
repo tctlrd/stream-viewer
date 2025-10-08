@@ -53,6 +53,7 @@ logger = setup_logging()
 class StreamConfig:
     id: str
     url: str
+    position: PositionConfig = field(default_factory=PositionConfig)
 
 class StreamViewer:    
     def __init__(self, config_path: str = None):

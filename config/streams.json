@@ -3,18 +3,42 @@
     {
       "id": "camera1",
       "url": "rtsp://user:pass@10.0.0.201:554/Streaming/Channels/102",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 960,
+        "height": 540
+      },
     },
     {
       "id": "camera2",
       "url": "rtsp://user:pass@10.0.0.202:554/Streaming/Channels/102",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 960,
+        "height": 540
+      },
     },
     {
       "id": "camera3",
       "url": "rtsp://user:pass@10.0.0.204:554/Streaming/Channels/102",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 960,
+        "height": 540
+      },
     },
     {
       "id": "camera4",
       "url": "rtsp://user:pass@10.0.0.205:554/Streaming/Channels/102",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 960,
+        "height": 540
+      },
     }
   ]
 }
