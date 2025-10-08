@@ -13,9 +13,7 @@ output Virtual-1 {
     bg #ffffff solid_color
 }
 
-workspace 1 {
-    layout splitv
-}
+for_window [app_id="mpv"] floating disable
 
 #for_window [title="camera1"] {
 #    floating enable
