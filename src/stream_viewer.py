@@ -62,21 +62,136 @@ class StreamConfig:
     url: str
     position: PositionConfig = field(default_factory=PositionConfig)
 
-class StreamViewer:    
+class StreamViewer:
+    """Manages multiple MPV streams with Sway window management."""
+    
     def __init__(self, config_path: str = None):
         self.streams: Dict[str, dict] = {}
         self.mpv_instances: Dict[str, subprocess.Popen] = {}
         self.running = False
+        self.config_path = config_path
+        self.sway_config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'config', 'generated_sway_config'
+        )
         
         # Load configuration if provided
         if config_path and os.path.exists(config_path):
             self.load_config(config_path)
+            self._generate_sway_config()
         
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGTERM, self._handle_signal)
     
+    def _generate_sway_config(self) -> None:
+        """Generate Sway configuration using the template and append window rules.
+        
+        Copies the template file and appends window positioning rules for each stream.
+        """
+        if not self.streams:
+            return
+            
+        config_dir = os.path.dirname(self.sway_config_path)
+        os.makedirs(config_dir, exist_ok=True)
+        
+        # Path to the template file
+        template_path = os.path.join(
+            os.path.dirname(self.sway_config_path),
+            'sway_config_template.in'
+        )
+        
+        # Read the template file if it exists, otherwise use default config
+        try:
+            with open(template_path, 'r') as f:
+                config_content = f.read()
+        except FileNotFoundError:
+            logger.warning(f"Template file not found at {template_path}, using default config")
+            config_content = """# Basic Sway Configuration
+set $mod Mod1
+
+default_border none
+default_floating_border none
+focus_follows_mouse no
+
+# Set up outputs
+output * {
+    bg #000000 solid_color
+}
+"""
+        
+        # Generate window rules for each stream
+        window_rules = []
+        for stream_id, stream in self.streams.items():
+            pos = stream.position
+            rule = f'''
+# Window rules for {stream_id}
+for_window [title="{stream_id}"] {{
+    floating enable
+    sticky enable
+    border none
+    move position {pos.x} {pos.y}
+    resize set {pos.width} {pos.height}
+}}'''
+            window_rules.append(rule)
+        
+        # Append window rules to the config
+        config_content += '\n'.join([''] + window_rules)
+        
+        # Write the final config
+        with open(self.sway_config_path, 'w') as f:
+            f.write(config_content)
+        
+        logger.info(f"Generated Sway configuration at {self.sway_config_path}")
+        
+        # Reload Sway to apply new config
+        try:
+            subprocess.run(['swaymsg', 'reload'], check=True)
+            logger.info("Reloaded Sway configuration")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to reload Sway: {e}")
+        except FileNotFoundError:
+            logger.error("Could not reload Sway: 'swaymsg' command not found")
+    
+    def _position_window(self, stream_id: str) -> bool:
+        """Position a window using swaymsg."""
+        if stream_id not in self.streams:
+            return False
+            
+        stream = self.streams[stream_id]
+        pos = stream.position
+        
+        cmd = [
+            'swaymsg',
+            f'[title="{stream_id}"]',
+            'floating', 'enable',
+            'sticky', 'enable',
+            'border', 'none',
+            'move', 'position', str(pos.x), str(pos.y),
+            'resize', 'set', str(pos.width), str(pos.height)
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                logger.debug(f"Positioned window for {stream_id}")
+                return True
+            else:
+                logger.warning(f"Failed to position window for {stream_id}: {result.stderr}")
+                return False
+        except Exception as e:
+            logger.error(f"Error positioning window for {stream_id}: {e}")
+            return False
+    
     def load_config(self, config_path: str) -> bool:
+        """Load stream configuration from a JSON file.
+        
+        Args:
+            config_path: Path to the configuration file
+            
+        Returns:
+            bool: True if configuration was loaded successfully
+        """
         try:
             with open(config_path, 'r') as f:
                 config = json.load(f)
@@ -85,22 +200,30 @@ class StreamViewer:
             if 'streams' in config and isinstance(config['streams'], list):
                 for stream_cfg in config['streams']:
                     position_cfg = stream_cfg.pop('position', {})
-                    
                     stream = StreamConfig(
-                        **stream_cfg,
-                        position=PositionConfig(**position_cfg),
+                        id=stream_cfg['id'],
+                        url=stream_cfg['url'],
+                        position=PositionConfig(**position_cfg)
                     )
                     self.streams[stream.id] = stream
 
                 logger.info(f"Loaded configuration for {len(self.streams)} streams")
                 return True
-                
+            return False
+            
         except Exception as e:
-            logger.error(f"Error loading configuration: {e}")
-        
-        return False
-    
+            logger.error(f"Error loading config: {e}")
+            return False
+
     def start_stream(self, stream: StreamConfig) -> bool:
+        """Start a single stream.
+        
+        Args:
+            stream: Stream configuration
+            
+        Returns:
+            bool: True if the stream was started successfully
+        """
         if stream.id in self.mpv_instances:
             process = self.mpv_instances[stream.id]
             if process.poll() is None:  # Process is still running
@@ -125,21 +248,13 @@ class StreamViewer:
                 '--no-osd-bar',
                 '--no-input-default-bindings',
                 '--input-vo-keyboard=no',
-                '--title=' + stream.id,
+                f'--title={stream.id}',
                 '--msg-level=all=info',
-                '--log-file=' + log_file,
+                f'--log-file={log_file}',
                 '--window-scale=1.0',
                 '--window-minimized=no',
                 '--no-window-dragging',
-                '--geometry=' + f'{stream.position.width}x{stream.position.height}',
                 stream.url
-            ]
-            
-            # Sway window positioning command
-            sway_cmd = [
-                'swaymsg',
-                f'[title="{stream.id}"]',
-                f'move position {stream.position.x} {stream.position.y}'
             ]
             
             logger.info(f"Starting MPV with command: {' '.join(cmd)}")
@@ -151,33 +266,18 @@ class StreamViewer:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
-                    close_fds=True
+                    close_fds=True,
+                    start_new_session=True
                 )
                 
-                # Give MPV a moment to create the window
+                # Wait for window to be created
                 time.sleep(1.0)
                 
-                # Position the window using swaymsg with retries
-                max_retries = 5
-                logger.debug(f"Executing swaymsg command: {' '.join(sway_cmd)}")
-                
-                for attempt in range(max_retries):
-                    result = subprocess.run(sway_cmd, capture_output=True, text=True)
-                    logger.debug(f"swaymsg attempt {attempt + 1} output: {result.stdout}")
-                    if result.stderr:
-                        logger.debug(f"swaymsg stderr: {result.stderr}")
-                    
-                    if result.returncode == 0:
-                        logger.info(f"Successfully positioned window for {stream.id}")
-                        break
-                    
-                    logger.warning(f"Failed to position window for {stream.id} (attempt {attempt + 1}/{max_retries})")
-                    time.sleep(0.5)  # Wait a bit longer before retrying
-                else:
-                    logger.error(f"Failed to position window for {stream.id} after {max_retries} attempts")
+                # Position the window using swaymsg
+                if not self._position_window(stream.id):
+                    logger.warning(f"Window positioning failed for {stream.id}, but continuing...")
                 
                 # Check if process started successfully
-                time.sleep(1)  # Give it more time to fail
                 if process.poll() is not None:
                     _, stderr = process.communicate(timeout=2)
                     logger.error(f"MPV failed to start for {stream.id}. Error: {stderr}")
@@ -186,8 +286,9 @@ class StreamViewer:
             except subprocess.TimeoutExpired:
                 # Process is still running, which is good
                 pass
+                
             except Exception as e:
-                logger.error(f"Error starting MPV for {stream.id}: {str(e)}")
+                logger.error(f"Error starting MPV for {stream.id}: {e}")
                 return False
             
             self.mpv_instances[stream.id] = process
@@ -211,7 +312,7 @@ class StreamViewer:
             return True
             
         except Exception as e:
-            logger.error(f"Failed to start stream {stream.id}: {str(e)}", exc_info=True)
+            logger.error(f"Failed to start stream {stream.id}", exc_info=True)
             return False
     
     def stop_stream(self, stream_id: str) -> bool:
