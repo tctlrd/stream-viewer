@@ -1,7 +1,7 @@
 # Basic Sway Configuration
 set $mod Mod4
 
-default_orientation vertical
+default_orientation horizontal
 default_border none
 default_floating_border none
 
@@ -16,33 +16,33 @@ output Virtual-1 {
     bg #ffffff solid_color
 }
 
-for_window [title="camera1"] {
+#for_window [title="camera1"] {
 #    floating enable
 #    sticky enable
 #    move position 0 0
 #    resize set 540
-}
+#}
 
-for_window [title="camera2"] {
+#for_window [title="camera2"] {
 #    floating enable
 #    sticky enable
 #    move position 0 320
 #    resize set 540
-}
+#}
 
-for_window [title="camera3"] {
+#for_window [title="camera3"] {
 #    floating enable
 #    sticky enable
 #    move position 0 640
 #    resize set 540
-}
+#}
 
-for_window [title="camera4"] {
+#for_window [title="camera4"] {
 #    floating enable
 #    sticky enable
 #    move position 0 960
 #    resize set 540
-}
+#}
 
 # Start stream viewer
 exec_always --no-startup-id /opt/stream-viewer
