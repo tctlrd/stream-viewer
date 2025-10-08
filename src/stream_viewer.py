@@ -50,6 +50,13 @@ def setup_logging():
 logger = setup_logging()
 
 @dataclass
+class PositionConfig:
+    x: int
+    y: int
+    width: int
+    height: int
+
+@dataclass
 class StreamConfig:
     id: str
     url: str
