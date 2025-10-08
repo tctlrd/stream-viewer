@@ -116,7 +116,7 @@ class StreamViewer:
             os.makedirs(log_dir, exist_ok=True)
             log_file = os.path.join(log_dir, f'mpv_{stream.id}.log')
             
-            # Build MPV command with Sway support
+            # Build MPV command
             cmd = [
                 'mpv',
                 '--no-config',
@@ -131,8 +131,15 @@ class StreamViewer:
                 '--window-scale=1.0',
                 '--window-minimized=no',
                 '--no-window-dragging',
-                '--geometry=' + f'{stream.position.width}x{stream.position.height}+{stream.position.x}+{stream.position.y}',
+                '--geometry=' + f'{stream.position.width}x{stream.position.height}',
                 stream.url
+            ]
+            
+            # Sway window positioning command
+            sway_cmd = [
+                'swaymsg',
+                f'[title="{stream.id}"]',
+                f'move position {stream.position.x} {stream.position.y}'
             ]
             
             logger.info(f"Starting MPV with command: {' '.join(cmd)}")
@@ -151,6 +158,9 @@ class StreamViewer:
                 
                 # Give MPV a moment to create the window
                 time.sleep(0.5)
+                
+                # Position the window using swaymsg
+                subprocess.run(sway_cmd, capture_output=True, text=True)
                 
                 # Check if process started successfully
                 time.sleep(1)  # Give it more time to fail
