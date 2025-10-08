@@ -120,20 +120,12 @@ output * {
 }
 """
         
-        # Generate window rules for each stream
-        window_rules = []
-        for stream_id, stream in self.streams.items():
-            pos = stream.position
-            rule = f'''
-# Window rules for {stream_id}
-for_window [title="{stream_id}"] {{
-    floating enable
-    sticky enable
-    border none
-    move position {pos.x} {pos.y}
-    resize set {pos.width} {pos.height}
-}}'''
-            window_rules.append(rule)
+        # Generate window positioning rules for each stream
+        window_rules = [
+            f'''for_window [title="{stream_id}"] {{\n    move position {pos.x} {pos.y}\n}}'''
+            for stream_id, stream in self.streams.items()
+            for pos in [stream.position]
+        ]
         
         # Append window rules to the config
         config_content += '\n'.join([''] + window_rules)
@@ -152,33 +144,7 @@ for_window [title="{stream_id}"] {{
             logger.error(f"Failed to reload Sway: {e}")
         except FileNotFoundError:
             logger.error("Could not reload Sway: 'swaymsg' command not found")
-    
-    def _position_window(self, stream_id: str) -> bool:
-        """Position a window using swaymsg."""
-        if stream_id not in self.streams:
-            return False
-            
-        stream = self.streams[stream_id]
-        pos = stream.position
         
-        cmd = [
-            'swaymsg',
-            f'[title="{stream_id}"]',
-            'move', 'position', str(pos.x), str(pos.y)
-        ]
-        
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                logger.debug(f"Positioned window for {stream_id}")
-                return True
-            else:
-                logger.warning(f"Failed to position window for {stream_id}: {result.stderr}")
-                return False
-        except Exception as e:
-            logger.error(f"Error positioning window for {stream_id}: {e}")
-            return False
-    
     def load_config(self, config_path: str) -> bool:
         """Load stream configuration from a JSON file.
         
@@ -268,10 +234,6 @@ for_window [title="{stream_id}"] {{
                 
                 # Wait for window to be created
                 time.sleep(1.0)
-                
-                # Position the window using swaymsg
-                if not self._position_window(stream.id):
-                    logger.warning(f"Window positioning failed for {stream.id}, but continuing...")
                 
                 # Check if process started successfully
                 if process.poll() is not None:
