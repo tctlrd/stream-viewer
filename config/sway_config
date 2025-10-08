@@ -27,7 +27,7 @@ for_window [title="camera1"] {
 
 for_window [title="camera2"] {
     resize set 540
-    move position 0 320
+    move position 540 0
 }
 
 for_window [title="camera3"] {
@@ -37,5 +37,5 @@ for_window [title="camera3"] {
 
 for_window [title="camera4"] {
     resize set 540
-    move position 0 960
+    move position 540 640
 }
