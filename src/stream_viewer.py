@@ -146,21 +146,35 @@ class StreamViewer:
             
             # Start MPV process with error handling
             try:
-                # Start MPV process
                 process = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
-                    close_fds=True,
-                    start_new_session=True
+                    close_fds=True
                 )
                 
                 # Give MPV a moment to create the window
-                time.sleep(0.5)
+                time.sleep(1.0)
                 
-                # Position the window using swaymsg
-                subprocess.run(sway_cmd, capture_output=True, text=True)
+                # Position the window using swaymsg with retries
+                max_retries = 5
+                logger.debug(f"Executing swaymsg command: {' '.join(sway_cmd)}")
+                
+                for attempt in range(max_retries):
+                    result = subprocess.run(sway_cmd, capture_output=True, text=True)
+                    logger.debug(f"swaymsg attempt {attempt + 1} output: {result.stdout}")
+                    if result.stderr:
+                        logger.debug(f"swaymsg stderr: {result.stderr}")
+                    
+                    if result.returncode == 0:
+                        logger.info(f"Successfully positioned window for {stream.id}")
+                        break
+                    
+                    logger.warning(f"Failed to position window for {stream.id} (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(0.5)  # Wait a bit longer before retrying
+                else:
+                    logger.error(f"Failed to position window for {stream.id} after {max_retries} attempts")
                 
                 # Check if process started successfully
                 time.sleep(1)  # Give it more time to fail
