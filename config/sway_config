@@ -1,9 +1,7 @@
 # Basic Sway Configuration
 set $mod Mod4
 
-
-gaps inner 5
-gaps outer 5
+swaybg_command -
 default_border none
 default_floating_border none
 bar mode invisible
