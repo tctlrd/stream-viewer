@@ -36,7 +36,7 @@ for_window [title="camera3"] {
 #    move position 0 640
 #    resize set 540
 
-for_window [title="camera2"] move down
+#for_window [title="camera2"] move down
 
 #    floating enable
 #    sticky enable
