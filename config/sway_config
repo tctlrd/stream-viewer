@@ -1,9 +1,9 @@
 # Basic Sway Configuration
 set $mod Mod1
 
-#default_border none
-#default_floating_border none
-#focus_follows_mouse no
+default_border none
+default_floating_border none
+focus_follows_mouse no
 
 #swaybg_command -
 
@@ -13,7 +13,7 @@ output Virtual-1 {
     bg #ffffff solid_color
 }
 
-for_window [app_id="mpv"] floating disable
+for_window [app_id="mpv"] layout splitv
 
 #for_window [title="camera1"] {
 #    floating enable
