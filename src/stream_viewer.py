@@ -50,7 +50,7 @@ def setup_logging():
 logger = setup_logging()
 
 @dataclass
-class PositionConfig:
+class GeometryConfig:
     x: int
     y: int
     width: int
@@ -60,7 +60,7 @@ class PositionConfig:
 class StreamConfig:
     id: str
     url: str
-    position: PositionConfig = field(default_factory=PositionConfig)
+    geometry: GeometryConfig = field(default_factory=GeometryConfig)
 
 class StreamViewer:
     """Manages multiple MPV streams with Sway window management."""
@@ -118,7 +118,7 @@ output * {
         window_rules = [
             f'''for_window [title="{stream_id}"] {{\n    move position {pos.x} {pos.y}\n}}'''
             for stream_id, stream in self.streams.items()
-            for pos in [stream.position]
+            for pos in [stream.geometry]
         ]
         
         # Append window rules to the config
@@ -146,11 +146,11 @@ output * {
             # Load stream configs
             if 'streams' in config and isinstance(config['streams'], list):
                 for stream_cfg in config['streams']:
-                    position_cfg = stream_cfg.pop('position', {})
+                    geometry_cfg = stream_cfg.pop('geometry', {})
                     stream = StreamConfig(
                         id=stream_cfg['id'],
                         url=stream_cfg['url'],
-                        position=PositionConfig(**position_cfg)
+                        geometry=GeometryConfig(**geometry_cfg)
                     )
                     self.streams[stream.id] = stream
 
@@ -201,7 +201,7 @@ output * {
                 '--window-scale=1.0',
                 '--window-minimized=no',
                 '--no-window-dragging',
-                f'--geometry={stream.position.x}x{stream.position.y}+{stream.position.x}+{stream.position.y}',
+                f'--geometry={stream.geometry.width}x{stream.geometry.height}+{stream.geometry.x}+{stream.geometry.y}',
                 stream.url
             ]
             
