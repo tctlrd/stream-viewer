@@ -13,8 +13,8 @@ output Virtual-1 {
     bg #ffffff solid_color
 }
 
-for_window [title="camera1"] {
-    split h
+for_window [title="camera2"] {
+    split v
 }
 
 #    floating enable
@@ -22,7 +22,7 @@ for_window [title="camera1"] {
 #    move position 0 0
 #    resize set 540
 
-for_window [title="camera3"] {
+for_window [title="camera4"] {
     split v
 }
 
