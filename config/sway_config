@@ -2,7 +2,7 @@
 set $mod Mod1
 
 #default_border none
-#default_floating_border none
+default_floating_border none
 focus_follows_mouse no
 
 #swaybg_command -
@@ -12,6 +12,8 @@ output Virtual-1 {
     transform 90
     bg #ffffff solid_color
 }
+
+exec_always --no-startup-id /opt/stream-viewer
 
 for_window [title="camera1"] {
     floating enable
@@ -40,7 +42,3 @@ for_window [title="camera4"] {
     resize set 540
     move position 0 960
 }
-
-# Start stream viewer
-exec_always --no-startup-id /opt/stream-viewer
-#exec /opt/stream-viewer
