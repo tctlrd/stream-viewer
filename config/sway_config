@@ -1,7 +1,7 @@
 # Basic Sway Configuration
 set $mod Mod1
 
-#default_border none
+default_border none
 default_floating_border none
 focus_follows_mouse no
 
@@ -15,30 +15,27 @@ output Virtual-1 {
 
 exec_always --no-startup-id /opt/stream-viewer
 
-for_window [title="camera1"] {
+for_window [visible="true"] {
     floating enable
     sticky enable
+}
+
+for_window [title="camera1"] {
     resize set 540
     move position 0 0
 }
 
 for_window [title="camera2"] {
-    floating enable
-    sticky enable
     resize set 540
     move position 0 320
 }
 
 for_window [title="camera3"] {
-    floating enable
-    sticky enable
     resize set 540
     move position 0 640
 }
 
 for_window [title="camera4"] {
-    floating enable
-    sticky enable
     resize set 540
     move position 0 960
 }
