@@ -13,8 +13,6 @@ output Virtual-1 {
     transform 90
 }
 
-workspace $ws_streams output Virtual-1  # Replace eDP-1 with your output name
-
 # Stream viewer window rules with explicit positioning
 for_window [title="camera1"] {
 #    floating enable
