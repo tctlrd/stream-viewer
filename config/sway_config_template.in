@@ -13,7 +13,7 @@ output Virtual-1 {
     bg #ffffff solid_color
 }
 
-exec_always --no-startup-id /opt/stream-viewer
+exec --no-startup-id /opt/stream-viewer
 
 for_window [app_id="mpv"] {
     floating enable
