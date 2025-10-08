@@ -201,8 +201,7 @@ output * {
                 '--window-scale=1.0',
                 '--window-minimized=no',
                 '--no-window-dragging',
-                '--geometry',
-                f'{stream.position.x},{stream.position.y}',
+                f'--geometry={stream.position.x},{stream.position.y}',
                 stream.url
             ]
             
