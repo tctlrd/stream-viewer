@@ -13,16 +13,12 @@ output Virtual-1 {
     bg #ffffff solid_color
 }
 
-for_window [title="camera2"] {
-    split v
-}
-
 #    floating enable
 #    sticky enable
 #    move position 0 0
 #    resize set 540
 
-for_window [title="camera4"] {
+for_window [title="camera3"] {
     split v
 }
 
