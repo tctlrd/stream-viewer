@@ -12,7 +12,7 @@ output Virtual-1 {
     transform 90
     bg #ffffff solid_color
 }
-
+workspace 1 layout splitv
 #    floating enable
 #    sticky enable
 #    move position 0 0
