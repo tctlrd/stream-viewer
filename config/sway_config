@@ -15,14 +15,14 @@ for_window [title="camera1"] {
     floating enable
     sticky enable
     move position 0 0
-    resize set height 540
+    resize set width 1080
 }
 
 for_window [title="camera2"] {
     floating enable
     sticky enable
     move position 0 320
-    resize set height 540
+    resize set width 1080
 }
 
 for_window [title="camera3"] {
