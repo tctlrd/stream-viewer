@@ -5,12 +5,12 @@ default_border none
 default_floating_border none
 focus_follows_mouse no
 
-#swaybg_command -
+swaybg_command -
 
 output Virtual-1 {
     mode 1920x1080
     transform 90
-    bg #ffffff solid_color
+    bg #000000 solid_color
 }
 
 exec --no-startup-id /opt/stream-viewer
