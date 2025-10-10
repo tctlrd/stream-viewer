@@ -405,10 +405,12 @@ output * {
                 logger.error("Failed to start Sway, exiting...")
                 return
                 
-            # Wait a bit more to ensure Sway is fully initialized
-            time.sleep(2)
+            # Wait 5 seconds to ensure Sway is fully initialized
+            logger.info("Waiting 5 seconds for Sway to initialize...")
+            time.sleep(5)
             
             # Then start the streams
+            logger.info("Starting all streams...")
             self.start_all()
             self.monitor()
             
