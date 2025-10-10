@@ -1,0 +1,17 @@
+[Unit]
+Description=Stream Viewer Service
+After=graphical.target getty@tty1.service
+Requires=getty@tty1.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/stream-viewer
+Environment=DISPLAY=:0
+Environment=XDG_RUNTIME_DIR=/run/user/0
+ExecStart=/usr/bin/python3 /opt/stream-viewer/src/stream_viewer.py -c /opt/streams.json
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

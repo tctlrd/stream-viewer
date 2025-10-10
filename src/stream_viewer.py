@@ -67,13 +67,13 @@ class StreamViewer:
     
     def __init__(self, config_path: str = None):
         self.streams: Dict[str, dict] = {}
-        self.mpv_instances: Dict[str, subprocess.Popen] = {}
         self.running = False
         self.config_path = config_path
         # Store paths for template and generated config
         config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config')
         self.template_path = os.path.join(config_dir, 'sway_config_template.in')
         self.sway_config_path = os.path.join(config_dir, 'sway_config.in')
+        self.sway_process = None
         
         # Load configuration if provided
         if config_path and os.path.exists(config_path):
@@ -195,6 +195,7 @@ output * {
                 '--no-osc',
                 '--no-osd-bar',
                 '--no-input-default-bindings',
+                '--hwdec=auto',
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
                 '--msg-level=all=info',
@@ -318,6 +319,7 @@ output * {
         """Handle termination signals."""
         logger.info(f"Received signal {signum}, shutting down...")
         self.stop_all()
+        self._stop_sway()
 
     def monitor(self) -> None:
         """Monitor and restart failed streams."""
@@ -337,18 +339,85 @@ output * {
                     logger.info(f"Restarting stream {stream_id}")
                     self.start_stream(self.streams[stream_id])
     
+    def _start_sway(self) -> bool:
+        """Start Sway with the generated configuration.
+        
+        Returns:
+            bool: True if Sway started successfully
+        """
+        if not os.path.exists(self.sway_config_path):
+            logger.error(f"Sway config file not found at {self.sway_config_path}")
+            return False
+            
+        try:
+            # Start Sway with the generated config
+            cmd = ['sway', '--config', self.sway_config_path]
+            logger.info(f"Starting Sway with command: {' '.join(cmd)}")
+            
+            self.sway_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                start_new_session=True
+            )
+            
+            # Give Sway some time to start
+            time.sleep(2)
+            
+            if self.sway_process.poll() is not None:
+                _, stderr = self.sway_process.communicate(timeout=2)
+                logger.error(f"Failed to start Sway: {stderr}")
+                return False
+                
+            logger.info("Sway started successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error starting Sway: {e}", exc_info=True)
+            return False
+    
+    def _stop_sway(self) -> None:
+        """Stop the Sway process if it's running."""
+        if self.sway_process and self.sway_process.poll() is None:
+            try:
+                logger.info("Stopping Sway...")
+                self.sway_process.terminate()
+                try:
+                    self.sway_process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.sway_process.kill()
+                    self.sway_process.wait()
+                logger.info("Sway stopped")
+            except Exception as e:
+                logger.error(f"Error stopping Sway: {e}")
+            finally:
+                self.sway_process = None
+
     def run(self) -> None:
         """Run the stream viewer."""
         try:
             logger.info("Starting Stream Viewer")
+            
+            # First start Sway
+            if not self._start_sway():
+                logger.error("Failed to start Sway, exiting...")
+                return
+                
+            # Wait a bit more to ensure Sway is fully initialized
+            time.sleep(2)
+            
+            # Then start the streams
             self.start_all()
             self.monitor()
+            
         except KeyboardInterrupt:
             logger.info("Shutting down...")
         except Exception as e:
             logger.error(f"Unexpected error: {e}", exc_info=True)
         finally:
             self.stop_all()
+            self._stop_sway()
             logger.info("Stream Viewer stopped")
 
 def main():
