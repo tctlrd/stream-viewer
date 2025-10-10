@@ -189,6 +189,7 @@ output * {
             # Build MPV command
             cmd = [
                 'mpv',
+                '--no-cache',
                 '--no-config',
                 '--no-audio',
                 '--no-osc',
