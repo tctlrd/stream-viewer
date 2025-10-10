@@ -67,6 +67,7 @@ class StreamViewer:
     
     def __init__(self, config_path: str = None):
         self.streams: Dict[str, dict] = {}
+        self.mpv_instances: Dict[str, subprocess.Popen] = {}
         self.running = False
         self.config_path = config_path
         # Store paths for template and generated config
