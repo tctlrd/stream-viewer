@@ -112,6 +112,7 @@ class StreamViewer:
                 '--hwdec=vaapi',
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
+                '--quiet',
                 '--msg-level=all=error',
                 f'--log-file={log_file}',
                 '--window-scale=1.0',
