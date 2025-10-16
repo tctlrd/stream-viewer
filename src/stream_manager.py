@@ -210,6 +210,23 @@ class StreamViewer:
             except:
                 pass
 
+    def _get_network_activity(self, pid: int) -> float:
+        """Get network activity in KB for a process."""
+        try:
+            with open(f'/proc/{pid}/net/dev') as f:
+                lines = f.readlines()
+            
+            total_bytes = 0
+            for line in lines[2:]:  # Skip header lines
+                if ':' in line:
+                    parts = line.split()
+                    if len(parts) >= 10:  # Received bytes is at index 1
+                        total_bytes += int(parts[1])
+            return total_bytes / 1024  # Convert to KB
+        except Exception as e:
+            logger.warning(f"Error getting network activity for PID {pid}: {e}")
+            return 0.0
+
     async def _monitor_stream(self, stream_id: str, process: asyncio.subprocess.Process) -> None:
         """Monitor a single stream for health and stability."""
         last_activity = time.monotonic()
