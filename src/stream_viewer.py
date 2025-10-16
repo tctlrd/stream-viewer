@@ -351,8 +351,18 @@ output * {
             return False
             
         try:
-            # Start Sway with the generated config
-            cmd = ['sway', '--config', self.sway_config_path]
+            # Create a temporary directory for Sway socket
+            import tempfile
+            temp_dir = tempfile.mkdtemp(prefix='stream-viewer-sway-')
+            self._swaysock_path = os.path.join(temp_dir, 'sway-ipc.sock')
+            
+            # Start Sway with the generated config and custom socket
+            cmd = [
+                'sway',
+                '--config', self.sway_config_path,
+                '--socket', self._swaysock_path
+            ]
+            
             logger.info(f"Starting Sway with command: {' '.join(cmd)}")
             
             self.sway_process = subprocess.Popen(
@@ -360,17 +370,23 @@ output * {
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                start_new_session=True
+                start_new_session=True,
+                env={**os.environ, 'SWAYSOCK': self._swaysock_path}
             )
             
-            # Give Sway some time to start
-            time.sleep(2)
-            
-            if self.sway_process.poll() is not None:
-                _, stderr = self.sway_process.communicate(timeout=2)
-                logger.error(f"Failed to start Sway: {stderr}")
+            # Wait for socket to be created
+            max_attempts = 10
+            for _ in range(max_attempts):
+                if os.path.exists(self._swaysock_path):
+                    break
+                time.sleep(0.5)
+            else:
+                logger.error("Timed out waiting for Sway socket")
                 return False
-                
+            
+            # Set SWAYSOCK for child processes
+            os.environ['SWAYSOCK'] = self._swaysock_path
+            
             logger.info("Sway started successfully")
             return True
             
@@ -383,6 +399,22 @@ output * {
         if self.sway_process and self.sway_process.poll() is None:
             try:
                 logger.info("Stopping Sway...")
+                # Use swaymsg to exit gracefully
+                if hasattr(self, '_swaysock_path') and os.path.exists(self._swaysock_path):
+                    try:
+                        subprocess.run(
+                            ['swaymsg', '-s', self._swaysock_path, 'exit'],
+                            timeout=5,
+                            check=True
+                        )
+                        # Give it a moment to shut down
+                        self.sway_process.wait(timeout=10)
+                        logger.info("Sway stopped gracefully")
+                        return
+                    except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+                        logger.warning("Graceful Sway shutdown failed, forcing...")
+                
+                # Fall back to forceful termination
                 self.sway_process.terminate()
                 try:
                     self.sway_process.wait(timeout=5)
@@ -390,10 +422,20 @@ output * {
                     self.sway_process.kill()
                     self.sway_process.wait()
                 logger.info("Sway stopped")
+                
             except Exception as e:
                 logger.error(f"Error stopping Sway: {e}")
             finally:
                 self.sway_process = None
+                # Clean up the socket file if it exists
+                if hasattr(self, '_swaysock_path') and os.path.exists(self._swaysock_path):
+                    try:
+                        temp_dir = os.path.dirname(self._swaysock_path)
+                        if temp_dir.startswith('/tmp/stream-viewer-sway-'):
+                            import shutil
+                            shutil.rmtree(temp_dir, ignore_errors=True)
+                    except Exception as e:
+                        logger.warning(f"Failed to clean up Sway socket directory: {e}")
 
     def run(self) -> None:
         """Run the stream viewer."""
