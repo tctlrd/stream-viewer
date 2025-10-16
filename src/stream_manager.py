@@ -204,7 +204,7 @@ class StreamViewer:
             if self._stop_event.is_set():
                 break
             await self.start_stream(stream)
-            await asyncio.sleep(0.8)  # Small delay to stagger stream starts
+            await asyncio.sleep(0.3)  # Small delay to stagger stream starts
     
     async def stop_all(self) -> None:
         """Stop all running streams asynchronously."""
@@ -281,11 +281,12 @@ class StreamViewer:
             logger.info("Starting Stream Viewer")
             await self.start_all()
             
-            # Start monitoring in the background
-            self._monitor_task = asyncio.create_task(self.monitor())
+            # Monitoring disabled for troubleshooting
+            # self._monitor_task = asyncio.create_task(self.monitor())
             
-            # Wait for stop event
-            await self._stop_event.wait()
+            # Wait for stop event (or keep running without monitoring)
+            while not self._stop_event.is_set():
+                await asyncio.sleep(1)
             
         except asyncio.CancelledError:
             logger.info("Shutdown requested")
