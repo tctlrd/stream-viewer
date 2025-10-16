@@ -102,7 +102,7 @@ class StreamViewer:
             # Build MPV command with IPC enabled
             cmd = [
                 'mpv',
-                f'--scripts-append={self.config_path}/reconnect.lua',
+                f'--scripts-append={os.path.join(os.path.dirname(os.path.abspath(__file__)), "reconnect.lua")}',
                 '--keep-open=yes',
                 '--keep-open-pause=no',
                 '--auto-window-resize=no',
