@@ -384,6 +384,10 @@ class StreamViewer:
         """
         if not os.path.exists(self.sway_config_path):
             logger.error(f"Sway config file not found at {self.sway_config_path}")
+            logger.error("This usually means either:")
+            logger.error("1. No streams are configured in your config file")
+            logger.error("2. The template file is missing at config/sway_config_template.in")
+            logger.error("3. There was an error generating the config")
             return False
             
         try:
@@ -478,7 +482,12 @@ class StreamViewer:
         try:
             logger.info("Starting Stream Viewer")
             
-            # First start Sway
+            # First generate Sway config if we have streams
+            if self.streams and not self._generate_sway_config():
+                logger.error("Failed to generate Sway configuration, exiting...")
+                return
+                
+            # Then start Sway
             if not self._start_sway():
                 logger.error("Failed to start Sway, exiting...")
                 return
