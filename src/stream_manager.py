@@ -96,9 +96,6 @@ class StreamViewer:
             os.makedirs(log_dir, exist_ok=True)
             log_file = os.path.join(log_dir, f'mpv_{stream.id}.log')
             
-            # Create a unique IPC socket for each stream
-            ipc_socket = f'/tmp/mpv-ipc-{stream.id}'
-            
             # Build MPV command with IPC enabled
             cmd = [
                 'mpv',
@@ -113,10 +110,9 @@ class StreamViewer:
                 '--no-input-default-bindings',
                 '--profile=low-latency',
                 '--hwdec=vaapi',
-                f'--input-ipc-server={ipc_socket}',  # Unique IPC socket for each stream
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
-                '--msg-level=ffmpeg/demuxer=error',
+                '--msg-level=all=error',
                 f'--log-file={log_file}',
                 '--window-scale=1.0',
                 '--window-minimized=no',
