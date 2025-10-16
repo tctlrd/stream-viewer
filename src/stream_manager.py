@@ -1,11 +1,13 @@
 """Stream Viewer - An async multi-stream viewer using MPV for playback."""
 import asyncio
-import os
 import json
-import signal
 import logging
+import os
+import signal
+import time
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional, List, Any, Deque, Tuple
 
 # Configure logging
 def setup_logging():
@@ -119,7 +121,6 @@ class StreamViewer:
                 f'--geometry={stream.geometry.width}x{stream.geometry.height}+{stream.geometry.x}+{stream.geometry.y}',
                 stream.url
             ]
-            
             logger.info(f"Starting MPV with command: {' '.join(cmd)}")
             
             # Start MPV process asynchronously
@@ -138,75 +139,18 @@ class StreamViewer:
                 logger.error(f"MPV failed to start for {stream.id}. Error: {stderr.decode()}")
                 return False
             except asyncio.TimeoutError:
-                # Process is still running, which is good
                 pass
             
             self.mpv_instances[stream.id] = process
             logger.info(f"Started stream {stream.id} (PID: {process.pid})")
             
-            # Start monitoring the process output
-            asyncio.create_task(self._monitor_process_output(stream.id, process))
-            
+            # Start monitoring the stream
+            asyncio.create_task(self._monitor_stream(stream.id, process))
             return True
             
         except Exception as e:
             logger.error(f"Failed to start stream {stream.id}", exc_info=True)
             return False
-
-    async def _monitor_process_output(self, stream_id: str, process: asyncio.subprocess.Process) -> None:
-        """Monitor the output of an MPV process and detect frozen streams."""
-        import time
-        
-        # Track last time we saw data
-        last_data_time = time.monotonic()
-        MAX_STALL_TIME = 5.0  # Consider stream dead after 10 seconds of no data
-        
-        try:
-            while process.returncode is None and not self._stop_event.is_set():
-                # Read stderr with timeout
-                try:
-                    line = await asyncio.wait_for(process.stderr.readline(), timeout=1.0)
-                    if line:
-                        last_data_time = time.monotonic()  # Reset timer on new data
-                        logger.debug(f"MPV {stream_id}: {line.decode().strip()}")
-                    else:
-                        # No data, check if we've been stalled too long
-                        if time.monotonic() - last_data_time > MAX_STALL_TIME:
-                            logger.warning(f"Stream {stream_id} appears to be frozen, restarting...")
-                            if process.returncode is None:
-                                process.terminate()
-                                try:
-                                    await asyncio.wait_for(process.wait(), timeout=2.0)
-                                except asyncio.TimeoutError:
-                                    process.kill()
-                            break
-                except asyncio.TimeoutError:
-                    # No data received, check for stall
-                    if time.monotonic() - last_data_time > MAX_STALL_TIME:
-                        logger.warning(f"Stream {stream_id} stalled, no data for {MAX_STALL_TIME}s")
-                        if process.returncode is None:
-                            process.terminate()
-                            try:
-                                await asyncio.wait_for(process.wait(), timeout=2.0)
-                            except asyncio.TimeoutError:
-                                process.kill()
-                        break
-                except Exception as e:
-                    logger.error(f"Error reading from MPV {stream_id}: {e}")
-                    break
-                    
-        except asyncio.CancelledError:
-            logger.debug(f"Monitoring for {stream_id} cancelled")
-        except Exception as e:
-            logger.error(f"Error monitoring MPV {stream_id}: {e}")
-        finally:
-            # Clean up if not already done
-            if process.returncode is None:
-                try:
-                    process.terminate()
-                    await asyncio.wait_for(process.wait(), timeout=1.0)
-                except:
-                    process.kill()
 
     async def stop_stream(self, stream_id: str) -> bool:
         """Stop a running MPV instance asynchronously."""
@@ -216,16 +160,7 @@ class StreamViewer:
         
         try:
             process = self.mpv_instances[stream_id]
-            
-            # Try to terminate gracefully
-            process.terminate()
-            try:
-                await asyncio.wait_for(process.wait(), timeout=2.0)
-            except asyncio.TimeoutError:
-                # Force kill if it doesn't terminate
-                process.kill()
-                await process.wait()
-            
+            await self._terminate_process(process)
             del self.mpv_instances[stream_id]
             logger.info(f"Stopped stream {stream_id}")
             return True
@@ -260,31 +195,139 @@ class StreamViewer:
                 for stream_id in list(self.mpv_instances.keys())]
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def monitor(self) -> None:
-        """Monitor and restart failed streams asynchronously."""
-        while not self._stop_event.is_set():
-            # Check for dead processes
-            dead_streams = []
-            for stream_id, process in list(self.mpv_instances.items()):
-                if process.returncode is not None:
-                    logger.warning(f"Stream {stream_id} died with code {process.returncode}")
-                    dead_streams.append(stream_id)
+    async def _terminate_process(self, process: asyncio.subprocess.Process, timeout: float = 2.0) -> None:
+        """Safely terminate a process with a timeout."""
+        if process.returncode is not None:
+            return
             
-            # Restart dead streams
-            for stream_id in dead_streams:
-                if stream_id in self.streams and not self._stop_event.is_set():
-                    logger.info(f"Restarting stream {stream_id}")
-                    await self.start_stream(self.streams[stream_id])
-                    await asyncio.sleep(1.0)  # Small delay between restarts
-            
-            # Wait for next check or stop event
+        process.terminate()
+        try:
+            await asyncio.wait_for(process.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            process.kill()
             try:
-                await asyncio.wait_for(
-                    self._stop_event.wait(),
-                    timeout=5.0  # Check every 5 seconds
-                )
-            except asyncio.TimeoutError:
+                await process.wait()
+            except:
                 pass
+
+    async def _monitor_stream(self, stream_id: str, process: asyncio.subprocess.Process) -> None:
+        """Monitor a single stream for health and stability."""
+        last_activity = time.monotonic()
+        last_bytes = 0
+        CHECK_INTERVAL = 2.0
+        MAX_INACTIVITY = 10.0  # seconds
+        
+        try:
+            while not self._stop_event.is_set() and process.returncode is None:
+                try:
+                    # Check network activity
+                    current_bytes = self._get_network_activity(process.pid)
+                    if current_bytes > last_bytes:
+                        last_activity = time.monotonic()
+                        last_bytes = current_bytes
+                        logger.debug(f"Stream {stream_id} active, bytes: {current_bytes:.2f} KB")
+                    elif (time.monotonic() - last_activity) > MAX_INACTIVITY:
+                        logger.warning(f"Stream {stream_id} inactive for {MAX_INACTIVITY}s, restarting...")
+                        await self._terminate_process(process)
+                        break
+                    
+                    # Read and log process output
+                    try:
+                        line = await asyncio.wait_for(process.stderr.readline(), timeout=1.0)
+                        if line:
+                            logger.debug(f"MPV {stream_id}: {line.decode().strip()}")
+                    except asyncio.TimeoutError:
+                        pass
+                    except Exception as e:
+                        logger.warning(f"Error reading from MPV {stream_id}: {e}")
+                    
+                    # Wait for next check
+                    await asyncio.sleep(CHECK_INTERVAL)
+                    
+                except Exception as e:
+                    logger.error(f"Error monitoring stream {stream_id}: {e}")
+                    break
+                    
+        except asyncio.CancelledError:
+            logger.debug(f"Monitoring for {stream_id} cancelled")
+        except Exception as e:
+            logger.error(f"Unexpected error in monitor for {stream_id}: {e}")
+        finally:
+            # Clean up if process is still running
+            if process.returncode is None:
+                logger.info(f"Terminating stream {stream_id}")
+                await self._terminate_process(process)
+
+    async def monitor(self) -> None:
+        """Monitor and automatically restart failed streams with backoff."""
+        import time
+        
+        # Track retry attempts and timestamps
+        retry_attempts = {}
+        MAX_RETRIES = 5
+        INITIAL_RETRY_DELAY = 2.0  # Start with 2 seconds
+        MAX_RETRY_DELAY = 60.0     # Cap at 1 minute between retries
+        
+        while not self._stop_event.is_set():
+            try:
+                # Check all streams
+                for stream_id, process in list(self.mpv_instances.items()):
+                    if self._stop_event.is_set():
+                        return
+                        
+                    # Skip if process is still running
+                    if process.returncode is None:
+                        if stream_id in retry_attempts:
+                            # Reset retry counter for successful streams
+                            logger.info(f"Stream {stream_id} recovered, resetting retry counter")
+                            del retry_attempts[stream_id]
+                        continue
+                        
+                    # Process has terminated
+                    if stream_id not in retry_attempts:
+                        retry_attempts[stream_id] = {
+                            'attempts': 0,
+                            'next_retry': time.monotonic(),
+                            'delay': INITIAL_RETRY_DELAY
+                        }
+                    
+                    # Check if it's time to retry
+                    current_time = time.monotonic()
+                    retry_info = retry_attempts[stream_id]
+                    
+                    if current_time >= retry_info['next_retry']:
+                        retry_info['attempts'] += 1
+                        
+                        if retry_info['attempts'] > MAX_RETRIES:
+                            logger.error(f"Max retries reached for {stream_id}. Giving up.")
+                            del self.mpv_instances[stream_id]
+                            continue
+                        
+                        # Calculate next retry with exponential backoff
+                        delay = min(retry_info['delay'] * 2, MAX_RETRY_DELAY)
+                        retry_info['delay'] = delay
+                        retry_info['next_retry'] = current_time + delay
+                        
+                        # Try to restart
+                        if stream_id in self.streams:
+                            logger.info(f"Attempting to restart {stream_id} (attempt {retry_info['attempts']}/{MAX_RETRIES}, next retry in {delay:.1f}s)")
+                            try:
+                                await self.start_stream(self.streams[stream_id])
+                                # Reset retry info on successful start
+                                if stream_id in self.mpv_instances:
+                                    del retry_attempts[stream_id]
+                            except Exception as e:
+                                logger.error(f"Failed to restart {stream_id}: {e}")
+                
+                # Wait before next check
+                await asyncio.sleep(2.0)
+                
+            except asyncio.CancelledError:
+                logger.debug("Monitoring task cancelled")
+                return
+            except Exception as e:
+                logger.error(f"Error in monitor loop: {e}")
+                await asyncio.sleep(5.0)  # Prevent tight error loops
 
     def load_config(self, config_path: str) -> bool:
         """Load configuration from file."""
