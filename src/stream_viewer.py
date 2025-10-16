@@ -223,7 +223,7 @@ class StreamViewer:
             os.makedirs(log_dir, exist_ok=True)
             log_file = os.path.join(log_dir, f'mpv_{stream.id}.log')
             
-            # Build MPV command
+            # Build MPV command with Wayland support
             cmd = [
                 'mpv',
                 '--no-cache',
@@ -232,7 +232,9 @@ class StreamViewer:
                 '--no-osc',
                 '--no-osd-bar',
                 '--no-input-default-bindings',
-                '--hwdec=auto',
+                '--gpu-context=wayland',  # Force Wayland backend
+                '--gpu-api=vulkan',       # Use Vulkan for better Wayland support
+                '--vd-lavacopy=no',       # Disable copy mode as it can cause issues
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
                 '--msg-level=all=info',
@@ -241,15 +243,26 @@ class StreamViewer:
                 '--window-minimized=no',
                 '--no-window-dragging',
                 f'--geometry={stream.geometry.width}x{stream.geometry.height}+{stream.geometry.x}+{stream.geometry.y}',
+                '--force-window=immediate',  # Force window creation immediately
                 stream.url
             ]
             
             logger.info(f"Starting MPV with command: {' '.join(cmd)}")
             
-            # Start MPV process with error handling
+            # Set up environment for Wayland
+            env = os.environ.copy()
+            env['SDL_VIDEODRIVER'] = 'wayland'
+            env['QT_QPA_PLATFORM'] = 'wayland'
+            env['GDK_BACKEND'] = 'wayland'
+            env['MOZ_ENABLE_WAYLAND'] = '1'
+            env['_JAVA_AWT_WM_NONREPARENTING'] = '1'
+            env['CLUTTER_BACKEND'] = 'wayland'
+            
+            # Start MPV process with error handling and Wayland environment
             try:
                 process = subprocess.Popen(
                     cmd,
+                    env=env,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
