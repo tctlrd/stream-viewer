@@ -6,8 +6,7 @@ import json
 import signal
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
-import psutil
+from typing import Dict
 
 # Configure logging
 def setup_logging():
@@ -78,57 +77,10 @@ class StreamViewer:
         # Load configuration if provided
         if config_path and os.path.exists(config_path):
             self.load_config(config_path)
-            self._generate_sway_config()
         
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGTERM, self._handle_signal)
-    
-    def _generate_sway_config(self) -> None:
-        """Generate Sway configuration using the template and append window rules.
-        
-        Copies the template file and appends window positioning rules for each stream.
-        """
-        if not self.streams:
-            return
-            
-        config_dir = os.path.dirname(self.sway_config_path)
-        os.makedirs(config_dir, exist_ok=True)
-        
-        # Read the template file if it exists, otherwise use default config
-        try:
-            with open(self.template_path, 'r') as f:
-                config_content = f.read()
-        except FileNotFoundError:
-            logger.warning(f"Template file not found at {template_path}, using default config")
-            config_content = """# Basic Sway Configuration
-set $mod Mod1
-
-default_border none
-default_floating_border none
-focus_follows_mouse no
-
-# Set up outputs
-output * {
-    bg #000000 solid_color
-}
-"""
-        
-        # Generate window positioning rules for each stream
-        window_rules = [
-            f'''for_window [title="{stream_id}"] {{\n    move position {pos.x} {pos.y}\n}}'''
-            for stream_id, stream in self.streams.items()
-            for pos in [stream.geometry]
-        ]
-        
-        # Append window rules to the config
-        config_content += '\n'.join([''] + window_rules)
-        
-        # Write the final config
-        with open(self.sway_config_path, 'w') as f:
-            f.write(config_content)
-        
-        logger.info(f"Generated Sway configuration at {self.sway_config_path}")
 
     def load_config(self, config_path: str) -> bool:
         """Load stream configuration from a JSON file.
