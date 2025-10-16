@@ -107,6 +107,7 @@ class StreamViewer:
                 '--no-osc',
                 '--no-osd-bar',
                 '--no-input-default-bindings',
+                '--hwdec=vaapi',
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
                 '--msg-level=ffmpeg/demuxer=error',
