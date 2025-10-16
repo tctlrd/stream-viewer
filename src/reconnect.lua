@@ -1,7 +1,7 @@
 -- Configuration
 local CHECK_INTERVAL = 2      -- Check every 2 seconds
 local MAX_STALL_TIME = 5      -- Consider stream stalled if no progress for 5 seconds
-local MAX_RETRIES = 5         -- Maximum number of reconnect attempts
+local MAX_RETRIES = 1000      -- Maximum number of reconnect attempts
 local RETRY_DELAY = 2         -- Initial delay between retries in seconds
 
 -- State
