@@ -15,4 +15,4 @@ for_window [app_id="mpv"] {
     sticky enable
 }
 
-exec /usr/bin/python3 /root/stream-viewer/src/stream_manager.py -c /root/.config/streams.json
+exec /root/stream-viewer/streams.sh
