@@ -14,3 +14,5 @@ for_window [app_id="mpv"] {
     floating enable
     sticky enable
 }
+
+exec /usr/bin/python3 /root/stream-viewer/src/stream_manager.py
