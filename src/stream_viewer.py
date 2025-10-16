@@ -259,9 +259,16 @@ class StreamViewer:
                 f.write(script_content)
             os.chmod(script_path, 0o755)
             
-            # Build swaymsg command to launch the script in a new terminal
+            # Get the Sway socket path
+            import subprocess
+            user_id = os.getuid()
+            sway_pid = subprocess.check_output(['pidof', 'sway']).decode().strip()
+            sway_socket = f'/run/user/{user_id}/sway-ipc.{user_id}.{sway_pid}.sock'
+            
+            # Build swaymsg command with the correct socket
             cmd = [
                 'swaymsg',
+                '--socket', sway_socket,
                 '-t', 'command',
                 'exec',
                 f'exec {script_path}'
