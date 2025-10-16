@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-"""
-Sway Manager - Handles Sway configuration and management.
-
-This module provides functionality to generate, manage, and reload Sway configurations.
-It handles the Sway IPC socket communication and provides methods to control the Sway
-window manager programmatically.
-"""
 import os
 import sys
 import time
