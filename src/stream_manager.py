@@ -101,7 +101,7 @@ class StreamViewer:
             os.makedirs(log_dir, exist_ok=True)
             log_file = os.path.join(log_dir, f'mpv_{stream.id}.log')
             
-            # Build MPV command
+            # Build MPV command with IPC enabled
             cmd = [
                 'mpv',
                 '--no-config',
@@ -111,6 +111,7 @@ class StreamViewer:
                 '--no-input-default-bindings',
                 '--profile=low-latency',
                 '--hwdec=vaapi',
+                '--input-ipc-server=/tmp/mpv-ipc',  # Enable IPC for monitoring
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
                 '--msg-level=ffmpeg/demuxer=error',
@@ -118,6 +119,8 @@ class StreamViewer:
                 '--window-scale=1.0',
                 '--window-minimized=no',
                 '--no-window-dragging',
+                '--idle=yes',  # Keep MPV running even if stream fails
+                '--force-window=immediate',
                 f'--geometry={stream.geometry.width}x{stream.geometry.height}+{stream.geometry.x}+{stream.geometry.y}',
                 stream.url
             ]
@@ -210,29 +213,28 @@ class StreamViewer:
             except:
                 pass
 
-    def _get_network_activity(self, pid: int) -> float:
-        """Get network activity in KB for a process."""
+    async def _is_stream_alive(self, process: asyncio.subprocess.Process) -> bool:
+        """Check if the MPV process is still running and responsive."""
         try:
-            with open(f'/proc/{pid}/net/dev') as f:
-                lines = f.readlines()
+            # Check if process is still running
+            if process.returncode is not None:
+                return False
+                
+            # Send a simple command to check if MPV is responsive
+            process.stdin.write(b'get_property time-pos\n')
+            await process.stdin.drain()
+            return True
             
-            total_bytes = 0
-            for line in lines[2:]:  # Skip header lines
-                if ':' in line:
-                    parts = line.split()
-                    if len(parts) >= 10:  # Received bytes is at index 1
-                        total_bytes += int(parts[1])
-            return total_bytes / 1024  # Convert to KB
+        except (BrokenPipeError, ConnectionResetError, ProcessLookupError):
+            return False
         except Exception as e:
-            logger.warning(f"Error getting network activity for PID {pid}: {e}")
-            return 0.0
+            logger.warning(f"Error checking stream status: {e}")
+            return False
 
     async def _monitor_stream(self, stream_id: str, process: asyncio.subprocess.Process) -> None:
         """Monitor a single stream for health and stability."""
-        last_check_time = time.monotonic()
-        last_bytes = self._get_network_activity(process.pid)
+        last_activity = time.monotonic()
         CHECK_INTERVAL = 2.0
-        MIN_BYTES_PER_SECOND = 10.0  # Minimum KB/s to consider stream active
         MAX_INACTIVITY = 10.0  # seconds
         
         try:
@@ -241,24 +243,11 @@ class StreamViewer:
             
             while not self._stop_event.is_set() and process.returncode is None:
                 try:
-                    # Wait for check interval
-                    await asyncio.sleep(CHECK_INTERVAL)
-                    
-                    # Check network activity
-                    current_time = time.monotonic()
-                    current_bytes = self._get_network_activity(process.pid)
-                    time_diff = current_time - last_check_time
-                    bytes_diff = current_bytes - last_bytes
-                    
-                    # Calculate bytes per second
-                    bytes_per_second = bytes_diff / time_diff if time_diff > 0 else 0
-                    
-                    if bytes_per_second >= MIN_BYTES_PER_SECOND:
-                        # Stream is active
-                        last_check_time = current_time
-                        last_bytes = current_bytes
-                        logger.debug(f"Stream {stream_id} active: {bytes_per_second:.2f} KB/s")
-                    elif (current_time - last_check_time) > MAX_INACTIVITY:
+                    # Check if stream is still alive
+                    if await self._is_stream_alive(process):
+                        last_activity = time.monotonic()
+                        await asyncio.sleep(CHECK_INTERVAL)
+                    elif (time.monotonic() - last_activity) > MAX_INACTIVITY:
                         logger.warning(f"Stream {stream_id} inactive for {MAX_INACTIVITY}s, restarting...")
                         await self._terminate_process(process)
                         break
