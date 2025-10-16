@@ -15,4 +15,4 @@ for_window [app_id="mpv"] {
     sticky enable
 }
 
-exec /root/mpv.sh
+exec /root/stream-viewer/streams.sh
