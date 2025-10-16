@@ -154,17 +154,59 @@ class StreamViewer:
             return False
 
     async def _monitor_process_output(self, stream_id: str, process: asyncio.subprocess.Process) -> None:
-        """Monitor the output of an MPV process."""
+        """Monitor the output of an MPV process and detect frozen streams."""
+        import time
+        
+        # Track last time we saw data
+        last_data_time = time.monotonic()
+        MAX_STALL_TIME = 10.0  # Consider stream dead after 10 seconds of no data
+        
         try:
-            while process.returncode is None:
-                line = await process.stderr.readline()
-                if not line:
+            while process.returncode is None and not self._stop_event.is_set():
+                # Read stderr with timeout
+                try:
+                    line = await asyncio.wait_for(process.stderr.readline(), timeout=1.0)
+                    if line:
+                        last_data_time = time.monotonic()  # Reset timer on new data
+                        logger.debug(f"MPV {stream_id}: {line.decode().strip()}")
+                    else:
+                        # No data, check if we've been stalled too long
+                        if time.monotonic() - last_data_time > MAX_STALL_TIME:
+                            logger.warning(f"Stream {stream_id} appears to be frozen, restarting...")
+                            if process.returncode is None:
+                                process.terminate()
+                                try:
+                                    await asyncio.wait_for(process.wait(), timeout=2.0)
+                                except asyncio.TimeoutError:
+                                    process.kill()
+                            break
+                except asyncio.TimeoutError:
+                    # No data received, check for stall
+                    if time.monotonic() - last_data_time > MAX_STALL_TIME:
+                        logger.warning(f"Stream {stream_id} stalled, no data for {MAX_STALL_TIME}s")
+                        if process.returncode is None:
+                            process.terminate()
+                            try:
+                                await asyncio.wait_for(process.wait(), timeout=2.0)
+                            except asyncio.TimeoutError:
+                                process.kill()
+                        break
+                except Exception as e:
+                    logger.error(f"Error reading from MPV {stream_id}: {e}")
                     break
-                logger.debug(f"MPV {stream_id}: {line.decode().strip()}")
+                    
         except asyncio.CancelledError:
-            pass
+            logger.debug(f"Monitoring for {stream_id} cancelled")
         except Exception as e:
-            logger.error(f"Error monitoring MPV output for {stream_id}: {e}")
+            logger.error(f"Error monitoring MPV {stream_id}: {e}")
+        finally:
+            # Clean up if not already done
+            if process.returncode is None:
+                try:
+                    process.terminate()
+                    await asyncio.wait_for(process.wait(), timeout=1.0)
+                except:
+                    process.kill()
 
     async def stop_stream(self, stream_id: str) -> bool:
         """Stop a running MPV instance asynchronously."""
