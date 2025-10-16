@@ -156,36 +156,20 @@ class SwayManager:
             try:
                 logger.warning("Sway did not stop gracefully, terminating...")
                 self.sway_process.terminate()
-                try:
-                    self.sway_process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    logger.warning("Force killing Sway...")
-                    self.sway_process.kill()
-                    self.sway_process.wait()
             except Exception as e:
-                logger.error(f"Error stopping Sway: {e}")
+                self.sway_process.wait(timeout=2)
+                self.sway_process.kill()
+                logger.error(f""Force killing Sway.. Error: {e}")
             finally:
                 self.sway_process = None
     
     def _handle_signal(self, signum, frame) -> None:
-        """Handle termination signals.
-        
-        Args:
-            signum: The signal number
-            frame: The current stack frame
-        """
         signal_name = signal.Signals(signum).name
         logger.info(f"Received signal {signal_name} ({signum}), shutting down...")
         self.running = False
         self._stop_sway()
     
     def run(self) -> None:
-        """Run the Sway manager main loop.
-        
-        This method initializes the Sway configuration, starts Sway, and enters
-        a monitoring loop. The loop can be interrupted by a keyboard interrupt
-        (Ctrl+C) or a termination signal.
-        """
         try:
             # Generate initial Sway config
             if not self._generate_sway_config():
@@ -216,11 +200,6 @@ class SwayManager:
             logger.info("Sway manager stopped")
 
 def main() -> None:
-    """Main entry point for the Sway manager.
-    
-    Parses command line arguments, validates the configuration file,
-    and starts the Sway manager.
-    """
     parser = argparse.ArgumentParser(description='Sway Configuration Manager')
     parser.add_argument(
         '-c', '--config',
