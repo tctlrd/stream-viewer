@@ -159,7 +159,7 @@ class SwayManager:
             except Exception as e:
                 self.sway_process.wait(timeout=2)
                 self.sway_process.kill()
-                logger.error(f""Force killing Sway.. Error: {e}"")
+                logger.error("Force killing Sway..")
             finally:
                 self.sway_process = None
     
