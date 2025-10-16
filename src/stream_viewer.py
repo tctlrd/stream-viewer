@@ -259,11 +259,18 @@ class StreamViewer:
                 f.write(script_content)
             os.chmod(script_path, 0o755)
             
-            # Get the Sway socket path
+            # Get the Sway socket path by finding the user who owns the Sway process
             import subprocess
+
             user_id = os.getuid()
+            
+            # Get the Sway PID
             sway_pid = subprocess.check_output(['pidof', 'sway']).decode().strip()
+            
+            # Construct the socket path
             sway_socket = f'/run/user/{user_id}/sway-ipc.{user_id}.{sway_pid}.sock'
+            
+            logger.debug(f"Using Sway socket: {sway_socket}")
             
             # Build swaymsg command with the correct socket
             cmd = [
@@ -271,7 +278,7 @@ class StreamViewer:
                 '--socket', sway_socket,
                 '-t', 'command',
                 'exec',
-                f'exec {script_path}'
+                script_path
             ]
             
             logger.info(f"Starting MPV via swaymsg with command: {' '.join(cmd)}")
