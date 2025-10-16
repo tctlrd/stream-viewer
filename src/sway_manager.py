@@ -41,6 +41,7 @@ class SwayManager:
         """
         self.config_path = os.path.abspath(config_path)
         self.running = False
+        self.sway_process = None
         
         # Set up signal handlers
         signal.signal(signal.SIGINT, self._handle_signal)
@@ -217,6 +218,67 @@ class SwayManager:
         logger.info("Reloading Sway configuration...")
         return self._send_sway_command('reload')
     
+    def _start_sway(self) -> bool:
+        """Start the Sway window manager with the generated configuration.
+        
+        Returns:
+            bool: True if Sway started successfully, False otherwise
+        """
+        if self.sway_process is not None and self.sway_process.poll() is None:
+            logger.warning("Sway is already running")
+            return True
+            
+        try:
+            logger.info("Starting Sway...")
+            self.sway_process = subprocess.Popen(
+                [
+                    'sway',
+                    '--config', self.sway_config_path,
+                    '--debug'
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                start_new_session=True
+            )
+            
+            # Check if Sway started successfully
+            time.sleep(1)  # Give Sway a moment to start
+            if self.sway_process.poll() is not None:
+                _, stderr = self.sway_process.communicate()
+                logger.error(f"Failed to start Sway: {stderr}")
+                return False
+                
+            logger.info("Sway started successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error starting Sway: {e}", exc_info=True)
+            return False
+    
+    def _stop_sway(self) -> None:
+        """Stop the Sway window manager gracefully."""
+        if self.sway_process is not None and self.sway_process.poll() is None:
+            logger.info("Stopping Sway...")
+            try:
+                # Try to exit Sway gracefully
+                self._send_sway_command('exit')
+                self.sway_process.wait(timeout=5)
+                logger.info("Sway stopped successfully")
+            except subprocess.TimeoutExpired:
+                logger.warning("Sway did not stop gracefully, terminating...")
+                self.sway_process.terminate()
+                try:
+                    self.sway_process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    logger.warning("Force killing Sway...")
+                    self.sway_process.kill()
+                    self.sway_process.wait()
+            except Exception as e:
+                logger.error(f"Error stopping Sway: {e}")
+            finally:
+                self.sway_process = None
+    
     def _handle_signal(self, signum, frame) -> None:
         """Handle termination signals.
         
@@ -227,41 +289,61 @@ class SwayManager:
         signal_name = signal.Signals(signum).name
         logger.info(f"Received signal {signal_name} ({signum}), shutting down...")
         self.running = False
+        self._stop_sway()
     
     def run(self) -> None:
         """Run the Sway manager main loop.
         
-        This method initializes the Sway configuration and enters a monitoring loop.
-        The loop can be interrupted by a keyboard interrupt (Ctrl+C) or a termination signal.
+        This method initializes the Sway configuration, starts Sway, and enters
+        a monitoring loop. The loop can be interrupted by a keyboard interrupt
+        (Ctrl+C) or a termination signal.
         """
         try:
             # Generate initial Sway config
-            try:
-                if not self._generate_sway_config():
-                    logger.error("Failed to generate initial Sway configuration")
-                    return
-                    
-                # Reload Sway to apply the new configuration
-                if not self.reload_sway():
-                    logger.error("Failed to reload Sway configuration")
-                    return
-                    
-                logger.info("Sway manager is running. Press Ctrl+C to exit.")
+            if not self._generate_sway_config():
+                logger.error("Failed to generate initial Sway configuration")
+                return
+            
+            # Start Sway
+            if not self._start_sway():
+                logger.error("Failed to start Sway")
+                return
+            
+            logger.info("Sway manager is running. Press Ctrl+C to exit.")
+            
+            # Main monitoring loop
+            self.running = True
+            while self.running and self.sway_process:
+                # Check if Sway is still running
+                if self.sway_process.poll() is not None:
+                    logger.error("Sway has terminated unexpectedly")
+                    break
                 
-                # Main monitoring loop
-                self.running = True
-                while self.running:
+                try:
+                    # Check for config file changes
+                    current_mtime = os.path.getmtime(self.template_path)
+                    if hasattr(self, '_last_mtime') and current_mtime > self._last_mtime:
+                        logger.info("Detected config file changes, reloading...")
+                        if self._generate_sway_config():
+                            self.reload_sway()
+                    self._last_mtime = current_mtime
+                    
+                    # Small sleep to prevent high CPU usage
                     time.sleep(1)
                     
-                    # Add any periodic checks here if needed
-                    # For example, checking for config file changes
+                except (IOError, OSError) as e:
+                    logger.warning(f"Error checking config file: {e}")
+                    time.sleep(5)  # Wait longer on error
+                except Exception as e:
+                    logger.error(f"Unexpected error in monitoring loop: {e}", exc_info=True)
+                    time.sleep(5)  # Wait longer on error
                     
-            except KeyboardInterrupt:
-                logger.info("Shutdown requested by user")
-            except Exception as e:
-                logger.error(f"Unexpected error in main loop: {e}", exc_info=True)
-                
+        except KeyboardInterrupt:
+            logger.info("Shutdown requested by user")
+        except Exception as e:
+            logger.error(f"Unexpected error in main loop: {e}", exc_info=True)
         finally:
+            self._stop_sway()
             logger.info("Sway manager stopped")
 
 def main() -> None:
