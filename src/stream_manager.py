@@ -121,7 +121,6 @@ class StreamViewer:
                 '--window-scale=1.0',
                 '--window-minimized=no',
                 '--no-window-dragging',
-                '--idle=yes',  # Keep MPV running even if stream fails
                 '--no-terminal',  # Don't use terminal for input
                 '--no-keepaspect-window',
                 f'--geometry={stream.geometry.width}x{stream.geometry.height}+{stream.geometry.x}+{stream.geometry.y}',
