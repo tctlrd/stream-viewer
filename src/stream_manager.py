@@ -1,12 +1,11 @@
-"""Stream Viewer - A simple multi-stream viewer using MPV for playback."""
+"""Stream Viewer - An async multi-stream viewer using MPV for playback."""
+import asyncio
 import os
-import subprocess
-import time
 import json
 import signal
 import logging
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, Optional, List, Any
 
 # Configure logging
 def setup_logging():
@@ -59,60 +58,38 @@ class GeometryConfig:
 class StreamConfig:
     id: str
     url: str
-    geometry: GeometryConfig = field(default_factory=GeometryConfig)
+    geometry: GeometryConfig = field(default_factory=lambda: GeometryConfig(0, 0, 640, 360))
 
 class StreamViewer:
-    """Manages multiple MPV streams with Sway window management."""
+    """Manages multiple MPV streams asynchronously."""
     
     def __init__(self, config_path: str = None):
-        self.streams: Dict[str, dict] = {}
-        self.mpv_instances: Dict[str, subprocess.Popen] = {}
+        self.streams: Dict[str, StreamConfig] = {}
+        self.mpv_instances: Dict[str, asyncio.subprocess.Process] = {}
         self.running = False
         self.config_path = config_path
-        # Store paths for template and generated config
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config')
-        self.template_path = os.path.join(config_dir, 'sway_config_template.in')
-        self.sway_config_path = os.path.join(config_dir, 'sway_config.in')
-        
-        # Load configuration if provided
-        if config_path and os.path.exists(config_path):
-            self.load_config(config_path)
+        self._monitor_task: Optional[asyncio.Task] = None
+        self._stop_event = asyncio.Event()
         
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGTERM, self._handle_signal)
 
-    def load_config(self, config_path: str) -> bool:
-        try:
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-            
-            # Load stream configs
-            if 'streams' in config and isinstance(config['streams'], list):
-                for stream_cfg in config['streams']:
-                    geometry_cfg = stream_cfg.pop('geometry', {})
-                    stream = StreamConfig(
-                        id=stream_cfg['id'],
-                        url=stream_cfg['url'],
-                        geometry=GeometryConfig(**geometry_cfg)
-                    )
-                    self.streams[stream.id] = stream
+    def _handle_signal(self, signum, frame) -> None:
+        """Handle termination signals."""
+        logger.info(f"Received signal {signum}, shutting down...")
+        self._stop_event.set()
+        if self._monitor_task:
+            self._monitor_task.cancel()
 
-                logger.info(f"Loaded configuration for {len(self.streams)} streams")
-                return True
-            return False
-            
-        except Exception as e:
-            logger.error(f"Error loading config: {e}")
-            return False
-
-    def start_stream(self, stream: StreamConfig) -> bool:
+    async def start_stream(self, stream: StreamConfig) -> bool:
+        """Start a stream asynchronously."""
         if stream.id in self.mpv_instances:
             process = self.mpv_instances[stream.id]
-            if process.poll() is None:  # Process is still running
+            if process.returncode is None:
                 logger.warning(f"Stream {stream.id} is already running")
                 return False
-            else:  # Process exists but is dead
+            else:
                 logger.warning(f"Removing dead process for {stream.id}")
                 del self.mpv_instances[stream.id]
         
@@ -132,8 +109,23 @@ class StreamViewer:
                 '--no-input-default-bindings',
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
-                '--really-quiet',
-                '--msg-level=all=error',
+                '--msg-level=ffmpeg/demuxer=error',
+                '--hwdec=auto-safe',
+                '--vo=gpu',
+                '--gpu-context=wayland',
+                '--gpu-api=vulkan',
+                '--vd-lavc-threads=2',
+                '--demuxer-lavf-analyzeduration=5',
+                '--demuxer-lavf-probe-info=nostreams',
+                '--demuxer-lavf-format=rtsp',
+                '--rtsp-transport=tcp',
+                '--network-timeout=30',
+                '--stream-buffer-size=10M',
+                '--cache=yes',
+                '--cache-secs=10',
+                '--demuxer-readahead-secs=10',
+                '--demuxer-max-bytes=25M',
+                '--demuxer-max-back-bytes=10M',
                 f'--log-file={log_file}',
                 '--window-scale=1.0',
                 '--window-minimized=no',
@@ -144,67 +136,52 @@ class StreamViewer:
             
             logger.info(f"Starting MPV with command: {' '.join(cmd)}")
             
-            # Start MPV process with error handling
+            # Start MPV process asynchronously
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                close_fds=True
+            )
+            
+            # Wait for process to start
             try:
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    close_fds=True,
-                    start_new_session=True
-                )
-                
-                # Wait for window to be created
-                time.sleep(1.0)
-                
-                # Check if process started successfully
-                if process.poll() is not None:
-                    _, stderr = process.communicate(timeout=2)
-                    logger.error(f"MPV failed to start for {stream.id}. Error: {stderr}")
-                    return False
-                    
-            except subprocess.TimeoutExpired:
+                await asyncio.wait_for(process.wait(), timeout=2.0)
+                # If we get here, the process exited quickly
+                stderr = await process.stderr.read()
+                logger.error(f"MPV failed to start for {stream.id}. Error: {stderr.decode()}")
+                return False
+            except asyncio.TimeoutError:
                 # Process is still running, which is good
                 pass
-                
-            except Exception as e:
-                logger.error(f"Error starting MPV for {stream.id}: {e}")
-                return False
             
             self.mpv_instances[stream.id] = process
             logger.info(f"Started stream {stream.id} (PID: {process.pid})")
             
-            # Set up a thread to monitor the process output
-            def log_output(process, stream_id):
-                while process.poll() is None:
-                    line = process.stderr.readline()
-                    if line:
-                        logger.debug(f"MPV {stream_id}: {line.strip()}")
-            
-            import threading
-            t = threading.Thread(
-                target=log_output,
-                args=(process, stream.id),
-                daemon=True
-            )
-            t.start()
+            # Start monitoring the process output
+            asyncio.create_task(self._monitor_process_output(stream.id, process))
             
             return True
             
         except Exception as e:
             logger.error(f"Failed to start stream {stream.id}", exc_info=True)
             return False
-    
-    def stop_stream(self, stream_id: str) -> bool:
-        """Stop a running MPV instance.
-        
-        Args:
-            stream_id: ID of the stream to stop
-            
-        Returns:
-            bool: True if the stream was stopped successfully
-        """
+
+    async def _monitor_process_output(self, stream_id: str, process: asyncio.subprocess.Process) -> None:
+        """Monitor the output of an MPV process."""
+        try:
+            while process.returncode is None:
+                line = await process.stderr.readline()
+                if not line:
+                    break
+                logger.debug(f"MPV {stream_id}: {line.decode().strip()}")
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Error monitoring MPV output for {stream_id}: {e}")
+
+    async def stop_stream(self, stream_id: str) -> bool:
+        """Stop a running MPV instance asynchronously."""
         if stream_id not in self.mpv_instances:
             logger.warning(f"Stream {stream_id} is not running")
             return False
@@ -212,14 +189,14 @@ class StreamViewer:
         try:
             process = self.mpv_instances[stream_id]
             
-            # Try to terminate gracefully first
+            # Try to terminate gracefully
             process.terminate()
             try:
-                process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
+                await asyncio.wait_for(process.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
                 # Force kill if it doesn't terminate
                 process.kill()
-                process.wait()
+                await process.wait()
             
             del self.mpv_instances[stream_id]
             logger.info(f"Stopped stream {stream_id}")
@@ -228,70 +205,118 @@ class StreamViewer:
         except Exception as e:
             logger.error(f"Error stopping stream {stream_id}: {e}")
             return False
-    
-    def start_all(self) -> None:
-        """Start all configured streams."""
+
+    async def start_all(self) -> None:
+        """Start all configured streams asynchronously."""
         if not self.streams:
             logger.warning("No streams configured")
             return
         
         self.running = True
+        self._stop_event.clear()
         
         # Start each stream with a small delay between them
-        for i, (stream_id, stream) in enumerate(self.streams.items()):
-            if self.start_stream(stream):
-                time.sleep(0.5)  # Small delay to stagger stream starts
+        for stream_id, stream in self.streams.items():
+            if self._stop_event.is_set():
+                break
+            await self.start_stream(stream)
+            await asyncio.sleep(0.8)  # Small delay to stagger stream starts
     
-    def stop_all(self) -> None:
-        """Stop all running streams."""
+    async def stop_all(self) -> None:
+        """Stop all running streams asynchronously."""
         self.running = False
+        self._stop_event.set()
         
-        # Stop all MPV instances
-        for stream_id in list(self.mpv_instances.keys()):
-            self.stop_stream(stream_id)
-                
-    def _handle_signal(self, signum, frame) -> None:
-        """Handle termination signals."""
-        logger.info(f"Received signal {signum}, shutting down...")
-        self.stop_all()
+        # Stop all MPV instances in parallel
+        tasks = [self.stop_stream(stream_id) 
+                for stream_id in list(self.mpv_instances.keys())]
+        await asyncio.gather(*tasks, return_exceptions=True)
 
-    def monitor(self) -> None:
-        """Monitor and restart failed streams."""
-        while self.running:
-            time.sleep(5)  # Check every 5 seconds
-            
+    async def monitor(self) -> None:
+        """Monitor and restart failed streams asynchronously."""
+        while not self._stop_event.is_set():
             # Check for dead processes
             dead_streams = []
             for stream_id, process in list(self.mpv_instances.items()):
-                if process.poll() is not None:  # Process has terminated
+                if process.returncode is not None:
                     logger.warning(f"Stream {stream_id} died with code {process.returncode}")
                     dead_streams.append(stream_id)
             
             # Restart dead streams
             for stream_id in dead_streams:
-                if stream_id in self.streams and self.running:
+                if stream_id in self.streams and not self._stop_event.is_set():
                     logger.info(f"Restarting stream {stream_id}")
-                    self.start_stream(self.streams[stream_id])
-    
-    def run(self) -> None:
-        """Run the stream viewer."""
+                    await self.start_stream(self.streams[stream_id])
+                    await asyncio.sleep(1.0)  # Small delay between restarts
+            
+            # Wait for next check or stop event
+            try:
+                await asyncio.wait_for(
+                    self._stop_event.wait(),
+                    timeout=5.0  # Check every 5 seconds
+                )
+            except asyncio.TimeoutError:
+                pass
+
+    def load_config(self, config_path: str) -> bool:
+        """Load configuration from file."""
         try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            
+            # Load stream configs
+            if 'streams' in config and isinstance(config['streams'], list):
+                for stream_cfg in config['streams']:
+                    geometry_cfg = stream_cfg.pop('geometry', {})
+                    stream = StreamConfig(
+                        id=stream_cfg['id'],
+                        url=stream_cfg['url'],
+                        geometry=GeometryConfig(
+                            x=geometry_cfg.get('x', 0),
+                            y=geometry_cfg.get('y', 0),
+                            width=geometry_cfg.get('width', 640),
+                            height=geometry_cfg.get('height', 360)
+                        )
+                    )
+                    self.streams[stream.id] = stream
+
+                logger.info(f"Loaded configuration for {len(self.streams)} streams")
+                return True
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error loading config: {e}")
+            return False
+
+    async def run(self) -> None:
+        """Run the stream viewer asynchronously."""
+        try:
+            if self.config_path and os.path.exists(self.config_path):
+                self.load_config(self.config_path)
+            
             logger.info("Starting Stream Viewer")
-            self.start_all()
-            self.monitor()
-        except KeyboardInterrupt:
-            logger.info("Shutting down...")
+            await self.start_all()
+            
+            # Start monitoring in the background
+            self._monitor_task = asyncio.create_task(self.monitor())
+            
+            # Wait for stop event
+            await self._stop_event.wait()
+            
+        except asyncio.CancelledError:
+            logger.info("Shutdown requested")
         except Exception as e:
             logger.error(f"Unexpected error: {e}", exc_info=True)
         finally:
-            self.stop_all()
+            logger.info("Shutting down streams...")
+            await self.stop_all()
             logger.info("Stream Viewer stopped")
 
-def main():
-    """Main entry point."""
+async def async_main():
+    """Async main entry point."""
     import argparse
     
-    parser = argparse.ArgumentParser(description='Stream Viewer - A simple multi-stream viewer using MPV')
+    parser = argparse.ArgumentParser(description='Stream Viewer - An async multi-stream viewer using MPV')
     parser.add_argument('-c', '--config', default='config/streams.json',
                       help='Path to configuration file')
     parser.add_argument('--debug', action='store_true',
@@ -307,14 +332,18 @@ def main():
     # Run the viewer
     try:
         viewer = StreamViewer(args.config)
-        viewer.run()
+        await viewer.run()
         return 0
     except Exception as e:
         logger.critical(f"Fatal error: {e}", exc_info=True)
         return 1
-    except KeyboardInterrupt:
+    except asyncio.CancelledError:
         logger.info("Shutting down...")
         return 0
+
+def main():
+    """Synchronous main entry point that runs the async main."""
+    return asyncio.run(async_main())
 
 if __name__ == '__main__':
     main()
