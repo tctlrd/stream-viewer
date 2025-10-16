@@ -229,21 +229,36 @@ class StreamViewer:
 
     async def _monitor_stream(self, stream_id: str, process: asyncio.subprocess.Process) -> None:
         """Monitor a single stream for health and stability."""
-        last_activity = time.monotonic()
-        last_bytes = 0
+        last_check_time = time.monotonic()
+        last_bytes = self._get_network_activity(process.pid)
         CHECK_INTERVAL = 2.0
+        MIN_BYTES_PER_SECOND = 10.0  # Minimum KB/s to consider stream active
         MAX_INACTIVITY = 10.0  # seconds
         
         try:
+            # Initial delay to let the stream stabilize
+            await asyncio.sleep(5.0)
+            
             while not self._stop_event.is_set() and process.returncode is None:
                 try:
+                    # Wait for check interval
+                    await asyncio.sleep(CHECK_INTERVAL)
+                    
                     # Check network activity
+                    current_time = time.monotonic()
                     current_bytes = self._get_network_activity(process.pid)
-                    if current_bytes > last_bytes:
-                        last_activity = time.monotonic()
+                    time_diff = current_time - last_check_time
+                    bytes_diff = current_bytes - last_bytes
+                    
+                    # Calculate bytes per second
+                    bytes_per_second = bytes_diff / time_diff if time_diff > 0 else 0
+                    
+                    if bytes_per_second >= MIN_BYTES_PER_SECOND:
+                        # Stream is active
+                        last_check_time = current_time
                         last_bytes = current_bytes
-                        logger.debug(f"Stream {stream_id} active, bytes: {current_bytes:.2f} KB")
-                    elif (time.monotonic() - last_activity) > MAX_INACTIVITY:
+                        logger.debug(f"Stream {stream_id} active: {bytes_per_second:.2f} KB/s")
+                    elif (current_time - last_check_time) > MAX_INACTIVITY:
                         logger.warning(f"Stream {stream_id} inactive for {MAX_INACTIVITY}s, restarting...")
                         await self._terminate_process(process)
                         break
