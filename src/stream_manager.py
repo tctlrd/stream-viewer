@@ -110,7 +110,6 @@ class StreamViewer:
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
                 '--msg-level=ffmpeg/demuxer=error',
-                '--hwdec=auto',
                 f'--log-file={log_file}',
                 '--window-scale=1.0',
                 '--window-minimized=no',
