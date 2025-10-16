@@ -1,123 +1,112 @@
-#!/usr/bin/env python3
-"""
-Stream Manager - Handles MPV stream management independently of the Sway configuration.
-"""
+"""Stream Viewer - A simple multi-stream viewer using MPV for playback."""
 import os
+import subprocess
 import time
 import json
 import signal
 import logging
-import subprocess
-from dataclasses import dataclass
-from typing import Dict, Optional, Any, List
+from dataclasses import dataclass, field
+from typing import Dict
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger('stream_manager')
+def setup_logging():
+    """Set up logging configuration."""
+    log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+    
+    log_file = os.path.join(log_dir, 'stream_viewer.log')
+    
+    # Clear previous log file
+    with open(log_file, 'w'):
+        pass
+    
+    # Configure root logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    
+    # Console handler (INFO level)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(console_formatter)
+    
+    # File handler (DEBUG level)
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.DEBUG)
+    file_formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    file_handler.setFormatter(file_formatter)
+    
+    # Add handlers
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
+    
+    return logging.getLogger('stream_viewer')
+
+# Initialize logging
+logger = setup_logging()
 
 @dataclass
-class StreamGeometry:
-    """Represents the geometry of a stream window."""
-    width: int
-    height: int
+class GeometryConfig:
     x: int
     y: int
+    width: int
+    height: int
 
 @dataclass
 class StreamConfig:
-    """Configuration for a single stream."""
     id: str
     url: str
-    geometry: StreamGeometry
-    options: Optional[Dict[str, Any]] = None
+    geometry: GeometryConfig = field(default_factory=GeometryConfig)
 
-class StreamManager:
-    """Manages MPV streams independently of the Sway configuration."""
+class StreamViewer:
+    """Manages multiple MPV streams with Sway window management."""
     
-    def __init__(self):
-        """Initialize the StreamManager."""
-        self.streams: Dict[str, StreamConfig] = {}
+    def __init__(self, config_path: str = None):
+        self.streams: Dict[str, dict] = {}
         self.mpv_instances: Dict[str, subprocess.Popen] = {}
         self.running = False
+        self.config_path = config_path
+        # Store paths for template and generated config
+        config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config')
+        self.template_path = os.path.join(config_dir, 'sway_config_template.in')
+        self.sway_config_path = os.path.join(config_dir, 'sway_config.in')
         
-        # Set up signal handlers for clean shutdown
+        # Load configuration if provided
+        if config_path and os.path.exists(config_path):
+            self.load_config(config_path)
+        
+        # Setup signal handlers
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGTERM, self._handle_signal)
-    
+
     def load_config(self, config_path: str) -> bool:
-        """Load stream configurations from a JSON file.
-        
-        Args:
-            config_path: Path to the JSON configuration file
-            
-        Returns:
-            bool: True if configuration was loaded successfully
-        """
         try:
             with open(config_path, 'r') as f:
-                config_data = json.load(f)
+                config = json.load(f)
             
-            self.streams = {}
-            streams_data = config_data.get('streams', [])
-            
-            # Handle both list and dict formats
-            if isinstance(streams_data, list):
-                for stream_data in streams_data:
-                    try:
-                        stream_id = stream_data['id']
-                        geo = stream_data.get('geometry', {})
-                        self.streams[stream_id] = StreamConfig(
-                            id=stream_id,
-                            url=stream_data['url'],
-                            geometry=StreamGeometry(
-                                width=geo.get('width', 640),
-                                height=geo.get('height', 360),
-                                x=geo.get('x', 0),
-                                y=geo.get('y', 0)
-                            ),
-                            options=stream_data.get('options', {})
-                        )
-                    except KeyError as e:
-                        logger.error(f"Missing required field in stream configuration: {e}")
-                        continue
-            elif isinstance(streams_data, dict):
-                for stream_id, stream_data in streams_data.items():
-                    try:
-                        geo = stream_data.get('geometry', {})
-                        self.streams[stream_id] = StreamConfig(
-                            id=stream_id,
-                            url=stream_data['url'],
-                            geometry=StreamGeometry(
-                                width=geo.get('width', 640),
-                                height=geo.get('height', 360),
-                                x=geo.get('x', 0),
-                                y=geo.get('y', 0)
-                            ),
-                            options=stream_data.get('options', {})
-                        )
-                    except KeyError as e:
-                        logger.error(f"Missing required field in stream configuration: {e}")
-                        continue
-            
-            logger.info(f"Loaded {len(self.streams)} stream configurations")
-            return True
+            # Load stream configs
+            if 'streams' in config and isinstance(config['streams'], list):
+                for stream_cfg in config['streams']:
+                    geometry_cfg = stream_cfg.pop('geometry', {})
+                    stream = StreamConfig(
+                        id=stream_cfg['id'],
+                        url=stream_cfg['url'],
+                        geometry=GeometryConfig(**geometry_cfg)
+                    )
+                    self.streams[stream.id] = stream
+
+                logger.info(f"Loaded configuration for {len(self.streams)} streams")
+                return True
+            return False
             
         except Exception as e:
-            logger.error(f"Failed to load configuration: {e}")
+            logger.error(f"Error loading config: {e}")
             return False
-    
+
     def start_stream(self, stream: StreamConfig) -> bool:
-        """Start a single MPV stream.
-        
-        Args:
-            stream: Stream configuration
-            
-        Returns:
-            bool: True if the stream was started successfully
-        """
         if stream.id in self.mpv_instances:
             process = self.mpv_instances[stream.id]
             if process.poll() is None:  # Process is still running
@@ -145,40 +134,69 @@ class StreamManager:
                 f'--title={stream.id}',
                 '--msg-level=all=info',
                 f'--log-file={log_file}',
-                '--force-window=immediate',
+                '--window-scale=1.0',
+                '--window-minimized=no',
+                '--no-window-dragging',
                 f'--geometry={stream.geometry.width}x{stream.geometry.height}+{stream.geometry.x}+{stream.geometry.y}',
                 stream.url
             ]
             
-            # Add any custom options
-            if stream.options:
-                for key, value in stream.options.items():
-                    if value is True:
-                        cmd.append(f'--{key}')
-                    elif value is not None:
-                        cmd.extend([f'--{key}', str(value)])
+            logger.info(f"Starting MPV with command: {' '.join(cmd)}")
             
-            logger.info(f"Starting MPV for {stream.id} with command: {' '.join(cmd)}")
-            
-            # Start MPV process
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                start_new_session=True
-            )
+            # Start MPV process with error handling
+            try:
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    close_fds=True,
+                    start_new_session=True
+                )
+                
+                # Wait for window to be created
+                time.sleep(1.0)
+                
+                # Check if process started successfully
+                if process.poll() is not None:
+                    _, stderr = process.communicate(timeout=2)
+                    logger.error(f"MPV failed to start for {stream.id}. Error: {stderr}")
+                    return False
+                    
+            except subprocess.TimeoutExpired:
+                # Process is still running, which is good
+                pass
+                
+            except Exception as e:
+                logger.error(f"Error starting MPV for {stream.id}: {e}")
+                return False
             
             self.mpv_instances[stream.id] = process
             logger.info(f"Started stream {stream.id} (PID: {process.pid})")
+            
+            # Set up a thread to monitor the process output
+            def log_output(process, stream_id):
+                while process.poll() is None:
+                    line = process.stderr.readline()
+                    if line:
+                        logger.debug(f"MPV {stream_id}: {line.strip()}")
+            
+            import threading
+            t = threading.Thread(
+                target=log_output,
+                args=(process, stream.id),
+                daemon=True
+            )
+            t.start()
+            
             return True
             
         except Exception as e:
-            logger.error(f"Failed to start stream {stream.id}: {e}")
+            logger.error(f"Failed to start stream {stream.id}", exc_info=True)
             return False
     
     def stop_stream(self, stream_id: str) -> bool:
-        """Stop a running MPV stream.
+        """Stop a running MPV instance.
         
         Args:
             stream_id: ID of the stream to stop
@@ -225,63 +243,77 @@ class StreamManager:
     
     def stop_all(self) -> None:
         """Stop all running streams."""
+        self.running = False
+        
+        # Stop all MPV instances
         for stream_id in list(self.mpv_instances.keys()):
             self.stop_stream(stream_id)
-    
-    def _handle_signal(self, signum, frame):
+                
+    def _handle_signal(self, signum, frame) -> None:
         """Handle termination signals."""
         logger.info(f"Received signal {signum}, shutting down...")
-        self.running = False
         self.stop_all()
-    
-    def run(self, config_path: str) -> None:
-        """Run the stream manager with the given configuration.
-        
-        Args:
-            config_path: Path to the configuration file
-        """
-        if not self.load_config(config_path):
-            return
-        
-        try:
-            self.start_all()
+
+    def monitor(self) -> None:
+        """Monitor and restart failed streams."""
+        while self.running:
+            time.sleep(5)  # Check every 5 seconds
             
-            # Main loop
-            while self.running:
-                time.sleep(1)
-                
-                # Check for dead processes
-                dead_streams = []
-                for stream_id, process in self.mpv_instances.items():
-                    if process.poll() is not None:  # Process has terminated
-                        logger.warning(f"Stream {stream_id} died with code {process.returncode}")
-                        dead_streams.append(stream_id)
-                
-                # Restart dead streams
-                for stream_id in dead_streams:
-                    if stream_id in self.mpv_instances:
-                        del self.mpv_instances[stream_id]
-                    if stream_id in self.streams and self.running:
-                        logger.info(f"Restarting stream {stream_id}")
-                        self.start_stream(self.streams[stream_id])
-                        
+            # Check for dead processes
+            dead_streams = []
+            for stream_id, process in list(self.mpv_instances.items()):
+                if process.poll() is not None:  # Process has terminated
+                    logger.warning(f"Stream {stream_id} died with code {process.returncode}")
+                    dead_streams.append(stream_id)
+            
+            # Restart dead streams
+            for stream_id in dead_streams:
+                if stream_id in self.streams and self.running:
+                    logger.info(f"Restarting stream {stream_id}")
+                    self.start_stream(self.streams[stream_id])
+    
+    def run(self) -> None:
+        """Run the stream viewer."""
+        try:
+            logger.info("Starting Stream Viewer")
+            self.start_all()
+            self.monitor()
         except KeyboardInterrupt:
             logger.info("Shutting down...")
         except Exception as e:
-            logger.error(f"Error in main loop: {e}")
+            logger.error(f"Unexpected error: {e}", exc_info=True)
         finally:
             self.stop_all()
+            logger.info("Stream Viewer stopped")
 
 def main():
-    """Main entry point for the stream manager."""
+    """Main entry point."""
     import argparse
     
-    parser = argparse.ArgumentParser(description='MPV Stream Manager')
-    parser.add_argument('-c', '--config', required=True, help='Path to configuration file')
+    parser = argparse.ArgumentParser(description='Stream Viewer - A simple multi-stream viewer using MPV')
+    parser.add_argument('-c', '--config', default='config/streams.json',
+                      help='Path to configuration file')
+    parser.add_argument('--debug', action='store_true',
+                      help='Enable debug logging')
     args = parser.parse_args()
     
-    manager = StreamManager()
-    manager.run(args.config)
+    # Enable debug logging if requested
+    if args.debug:
+        for handler in logging.getLogger().handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handler.setLevel(logging.DEBUG)
+    
+    # Run the viewer
+    try:
+        viewer = StreamViewer(args.config)
+        viewer.run()
+        return 0
+    except Exception as e:
+        logger.critical(f"Fatal error: {e}", exc_info=True)
+        return 1
+    except KeyboardInterrupt:
+        logger.info("Shutting down...")
+        return 0
 
 if __name__ == '__main__':
     main()

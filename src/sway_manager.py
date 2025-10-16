@@ -82,7 +82,7 @@ class SwayManager:
                 height = geo.get('height', 360)
                 
                 # Create window rule for this stream
-                rule = f"for_window [title='{stream['id']}'] move position {x} {y}"
+                rule = f'''for_window [title="{stream['id']}"] {{\n    move position {x} {y}\n}}'''
                 window_rules.append(rule)
             
             # Combine template with generated window rules
