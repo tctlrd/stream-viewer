@@ -132,6 +132,7 @@ class StreamViewer:
                 '--no-input-default-bindings',
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
+                '--really-quiet',
                 '--msg-level=all=error',
                 f'--log-file={log_file}',
                 '--window-scale=1.0',
