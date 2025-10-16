@@ -79,57 +79,72 @@ class StreamViewer:
         # Load configuration if provided
         if config_path and os.path.exists(config_path):
             self.load_config(config_path)
-            self._generate_sway_config()
         
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGTERM, self._handle_signal)
     
-    def _generate_sway_config(self) -> None:
+    def _generate_sway_config(self) -> bool:
         """Generate Sway configuration using the template and append window rules.
         
-        Copies the template file and appends window positioning rules for each stream.
+        Returns:
+            bool: True if config was generated successfully, False otherwise
+            
+        The method will:
+        1. Create the config directory if it doesn't exist
+        2. Always generate a new config file from the template
+        3. Return False if no template file is found
         """
         if not self.streams:
-            return
-            
+            logger.warning("No streams configured, skipping Sway config generation")
+            return False
+        
         config_dir = os.path.dirname(self.sway_config_path)
         os.makedirs(config_dir, exist_ok=True)
         
-        # Read the template file if it exists, otherwise use default config
+        # Read template file
+        if not os.path.exists(self.template_path):
+            logger.error(f"Template file not found: {self.template_path}")
+            return False
+            
         try:
             with open(self.template_path, 'r') as f:
                 config_content = f.read()
-        except FileNotFoundError:
-            logger.warning(f"Template file not found at {template_path}, using default config")
-            config_content = """# Basic Sway Configuration
-set $mod Mod1
-
-default_border none
-default_floating_border none
-focus_follows_mouse no
-
-# Set up outputs
-output * {
-    bg #000000 solid_color
-}
-"""
+            logger.debug("Using template from file")
+        except Exception as e:
+            logger.error(f"Failed to read template file: {e}")
+            return False
         
         # Generate window positioning rules for each stream
         window_rules = [
-            f'''for_window [title="{stream_id}"] {{\n    move position {pos.x} {pos.y}\n}}'''
+            f'''for_window [title="{stream_id}"] {{\n    move position {pos.x} {pos.y}\n    resize set width {pos.width} height {pos.height}\n}}'''
             for stream_id, stream in self.streams.items()
             for pos in [stream.geometry]
         ]
         
         # Append window rules to the config
-        config_content += '\n'.join([''] + window_rules)
+        new_config = config_content + '\n'.join([''] + window_rules)
         
-        # Write the final config
-        with open(self.sway_config_path, 'w') as f:
-            f.write(config_content)
-        
-        logger.info(f"Generated Sway configuration at {self.sway_config_path}")
+        try:
+            # Create a temporary file first
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, dir=config_dir) as temp_file:
+                temp_file.write(new_config)
+                temp_path = temp_file.name
+            
+            # Atomically replace the old config
+            os.replace(temp_path, self.sway_config_path)
+            logger.info(f"Generated new Sway configuration at {self.sway_config_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to write Sway config: {e}")
+            # Clean up temp file if it exists
+            if 'temp_path' in locals() and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+            return False
 
     def load_config(self, config_path: str) -> bool:
         """Load stream configuration from a JSON file.
@@ -140,23 +155,41 @@ output * {
         Returns:
             bool: True if configuration was loaded successfully
         """
+        if not os.path.exists(config_path):
+            logger.error(f"Configuration file not found: {config_path}")
+            return False
         try:
             with open(config_path, 'r') as f:
                 config = json.load(f)
             
             # Load stream configs
             if 'streams' in config and isinstance(config['streams'], list):
+                old_streams = self.streams.copy()
+                self.streams = {}
+                
                 for stream_cfg in config['streams']:
-                    geometry_cfg = stream_cfg.pop('geometry', {})
-                    stream = StreamConfig(
-                        id=stream_cfg['id'],
-                        url=stream_cfg['url'],
-                        geometry=GeometryConfig(**geometry_cfg)
-                    )
-                    self.streams[stream.id] = stream
+                    try:
+                        geometry_cfg = stream_cfg.pop('geometry', {})
+                        stream = StreamConfig(
+                            id=stream_cfg['id'],
+                            url=stream_cfg['url'],
+                            geometry=GeometryConfig(**geometry_cfg)
+                        )
+                        self.streams[stream.id] = stream
+                    except Exception as e:
+                        logger.error(f"Error loading stream config {stream_cfg.get('id', 'unknown')}: {e}")
+                        continue
 
                 logger.info(f"Loaded configuration for {len(self.streams)} streams")
+                
+                # Regenerate Sway config if streams changed
+                if old_streams != self.streams:
+                    logger.info("Stream configuration changed, regenerating Sway config...")
+                    return self._generate_sway_config(force_regenerate=True)
+                
                 return True
+                
+            logger.error("No valid 'streams' array found in configuration")
             return False
             
         except Exception as e:
