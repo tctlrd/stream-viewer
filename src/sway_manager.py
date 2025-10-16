@@ -24,21 +24,8 @@ logging.basicConfig(
 logger = logging.getLogger('sway_manager')
 
 class SwayManager:
-    """Manages Sway window manager configuration and operations.
-    
-    This class provides methods to generate Sway configurations, reload Sway,
-    and manage the Sway session programmatically.
-    """
     
     def __init__(self, config_path: str):
-        """Initialize the Sway manager.
-        
-        Args:
-            config_path: Path to the configuration file
-            
-        Raises:
-            FileNotFoundError: If the config directory cannot be created
-        """
         self.config_path = os.path.abspath(config_path)
         self.running = False
         self.sway_process = None
@@ -62,112 +49,7 @@ class SwayManager:
             logger.error(f"Failed to create config directory: {e}")
             raise
     
-    def _get_sway_socket(self) -> str:
-        """Get the path to the Sway IPC socket.
-        
-        Returns:
-            str: Path to the Sway socket
-            
-        Raises:
-            RuntimeError: If the Sway socket cannot be determined
-        """
-        # Try to get the socket from SWAYSOCK environment variable
-        if 'SWAYSOCK' in os.environ:
-            socket_path = os.environ['SWAYSOCK']
-            if os.path.exists(socket_path):
-                return socket_path
-            logger.warning(f"SWAYSOCK environment variable set but socket not found: {socket_path}")
-        
-        try:
-            # Try to get the socket from the default location
-            user_id = os.getuid()
-            result = subprocess.run(
-                ['pidof', 'sway'],
-                capture_output=True,
-                text=True,
-                check=False
-            )
-            
-            if result.returncode != 0:
-                raise RuntimeError("Sway is not running")
-                
-            sway_pid = result.stdout.strip()
-            if not sway_pid:
-                raise RuntimeError("Could not determine Sway process ID")
-                
-            socket_path = f'/run/user/{user_id}/sway-ipc.{user_id}.{sway_pid}.sock'
-            
-            if not os.path.exists(socket_path):
-                raise RuntimeError(f"Sway socket not found at {socket_path}")
-                
-            return socket_path
-            
-        except subprocess.SubprocessError as e:
-            logger.error(f"Failed to get Sway process ID: {e}")
-            raise RuntimeError("Could not determine Sway process ID") from e
-        except Exception as e:
-            logger.error(f"Failed to get Sway socket: {e}")
-    
-    def _send_sway_command(self, command: str) -> bool:
-        """Send a command to Sway via swaymsg.
-        
-        Args:
-            command: The command to send (e.g., 'reload', 'restart')
-                
-        Returns:
-            bool: True if the command was sent successfully, False otherwise
-            
-        Example:
-            >>> manager = SwayManager('/path/to/config')
-            >>> manager._send_sway_command('reload')
-            True
-        """
-        try:
-            socket_path = self._get_sway_socket()
-            cmd = [
-                'swaymsg',
-                '--socket', socket_path,
-                command
-            ]
-            
-            result = subprocess.run(
-                cmd,
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=10  # Add timeout to prevent hanging
-            )
-            
-            if result.stderr:
-                logger.warning(f"Sway command output: {result.stderr.strip()}")
-                
-            logger.debug(f"Sway command '{command}' executed successfully")
-            return True
-            
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Sway command failed with code {e.returncode}: {e.stderr.strip()}")
-            return False
-        except subprocess.TimeoutExpired:
-            logger.error(f"Sway command timed out: {command}")
-            return False
-        except Exception as e:
-            logger.error(f"Error sending Sway command '{command}': {e}", exc_info=True)
-            return False
-    
     def _generate_sway_config(self) -> bool:
-        """Generate Sway configuration using the template.
-        
-        This method reads the template file and generates a Sway configuration file.
-        The generated file will be saved to the path specified by self.sway_config_path.
-        
-        Returns:
-            bool: True if config was generated successfully, False otherwise
-            
-        Raises:
-            FileNotFoundError: If the template file does not exist
-            IOError: If there is an error reading or writing the files
-        """
         logger.info(f"Generating Sway configuration from template: {self.template_path}")
         
         if not os.path.exists(self.template_path):
@@ -202,22 +84,6 @@ class SwayManager:
             logger.error(error_msg, exc_info=True)
             raise IOError(error_msg) from e
     
-    def reload_sway(self) -> bool:
-        """Reload the Sway configuration.
-        
-        This will cause Sway to reload its configuration file and apply any changes.
-        
-        Returns:
-            bool: True if the reload command was sent successfully, False otherwise
-            
-        Example:
-            >>> manager = SwayManager('/path/to/config')
-            >>> if manager.reload_sway():
-            ...     print("Sway configuration reloaded successfully")
-        """
-        logger.info("Reloading Sway configuration...")
-        return self._send_sway_command('reload')
-    
     def _start_sway(self) -> bool:
         """Start the Sway window manager with the generated configuration.
         
@@ -233,8 +99,7 @@ class SwayManager:
             self.sway_process = subprocess.Popen(
                 [
                     'sway',
-                    '--config', self.sway_config_path,
-                    '--debug'
+                    '--config', self.sway_config_path
                 ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -318,25 +183,6 @@ class SwayManager:
                 if self.sway_process.poll() is not None:
                     logger.error("Sway has terminated unexpectedly")
                     break
-                
-                try:
-                    # Check for config file changes
-                    current_mtime = os.path.getmtime(self.template_path)
-                    if hasattr(self, '_last_mtime') and current_mtime > self._last_mtime:
-                        logger.info("Detected config file changes, reloading...")
-                        if self._generate_sway_config():
-                            self.reload_sway()
-                    self._last_mtime = current_mtime
-                    
-                    # Small sleep to prevent high CPU usage
-                    time.sleep(1)
-                    
-                except (IOError, OSError) as e:
-                    logger.warning(f"Error checking config file: {e}")
-                    time.sleep(5)  # Wait longer on error
-                except Exception as e:
-                    logger.error(f"Unexpected error in monitoring loop: {e}", exc_info=True)
-                    time.sleep(5)  # Wait longer on error
                     
         except KeyboardInterrupt:
             logger.info("Shutdown requested by user")
