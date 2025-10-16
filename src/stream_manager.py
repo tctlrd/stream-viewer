@@ -121,7 +121,7 @@ class StreamViewer:
                 '--window-scale=1.0',
                 '--window-minimized=no',
                 '--no-window-dragging',
-                '--no-terminal',  # Don't use terminal for input
+                '--no-terminal',
                 '--no-keepaspect-window',
                 f'--geometry={stream.geometry.width}x{stream.geometry.height}+{stream.geometry.x}+{stream.geometry.y}',
                 stream.url
