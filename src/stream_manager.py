@@ -7,7 +7,11 @@ import signal
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Dict, Optional, List, Any, Deque, Tuple
+from typing import Dict, Optional, List, Any, Deque, Tuple, Tuple
+from asyncio.subprocess import Process
+from signal import SIG_DFL, SIG_IGN, SIGINT, SIGTERM, Signals
+from types import FrameType
+from typing_extensions import TypedDict
 
 # Configure logging
 def setup_logging():
@@ -101,6 +105,9 @@ class StreamViewer:
             os.makedirs(log_dir, exist_ok=True)
             log_file = os.path.join(log_dir, f'mpv_{stream.id}.log')
             
+            # Create a unique IPC socket for each stream
+            ipc_socket = f'/tmp/mpv-ipc-{stream.id}'
+            
             # Build MPV command with IPC enabled
             cmd = [
                 'mpv',
@@ -111,7 +118,7 @@ class StreamViewer:
                 '--no-input-default-bindings',
                 '--profile=low-latency',
                 '--hwdec=vaapi',
-                '--input-ipc-server=/tmp/mpv-ipc',  # Enable IPC for monitoring
+                f'--input-ipc-server={ipc_socket}',  # Unique IPC socket for each stream
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
                 '--msg-level=ffmpeg/demuxer=error',
@@ -121,6 +128,8 @@ class StreamViewer:
                 '--no-window-dragging',
                 '--idle=yes',  # Keep MPV running even if stream fails
                 '--force-window=immediate',
+                '--no-terminal',  # Don't use terminal for input
+                '--no-keepaspect-window',
                 f'--geometry={stream.geometry.width}x{stream.geometry.height}+{stream.geometry.x}+{stream.geometry.y}',
                 stream.url
             ]
@@ -213,17 +222,65 @@ class StreamViewer:
             except:
                 pass
 
-    async def _is_stream_alive(self, process: asyncio.subprocess.Process) -> bool:
-        """Check if the MPV process is still running and responsive."""
+    def _get_frame_info(self, pid: int) -> Tuple[float, int]:
+        """Get frame count and timestamp from /proc/pid/status.
+        
+        Returns:
+            Tuple[float, int]: (timestamp, rss_kb)
+        """
+        try:
+            with open(f'/proc/{pid}/status') as f:
+                for line in f:
+                    if line.startswith('RssAnon:'):
+                        rss = int(line.split()[1])  # in kB
+                        return time.monotonic(), rss
+            return time.monotonic(), 0
+        except (FileNotFoundError, ProcessLookupError):
+            # Process doesn't exist anymore
+            return time.monotonic(), 0
+        except Exception as e:
+            logger.warning(f"Error getting frame info for PID {pid}: {e}")
+            return time.monotonic(), 0
+
+    async def _is_stream_alive(self, stream_id: str, process: asyncio.subprocess.Process) -> Tuple[bool, str]:
+        """Check if the stream is still active and updating.
+        
+        Returns:
+            Tuple[bool, str]: (is_alive, status_message)
+        """
         try:
             # Check if process is still running
             if process.returncode is not None:
-                return False
+                return False, f"process exited with code {process.returncode}"
                 
-            # Send a simple command to check if MPV is responsive
-            process.stdin.write(b'get_property time-pos\n')
-            await process.stdin.drain()
-            return True
+            # Check if process is still responding
+            try:
+                process.send_signal(0)  # Check if process is alive
+            except ProcessLookupError:
+                return False, "process not found"
+                
+            # Initialize frame info tracking if needed
+            if not hasattr(self, '_last_frame_info'):
+                self._last_frame_info = {}
+            
+            # Get current memory info
+            current_time, current_rss = self._get_frame_info(process.pid)
+            last_time, last_rss = self._last_frame_info.get(stream_id, (0, 0))
+            self._last_frame_info[stream_id] = (current_time, current_rss)
+            
+            # If we don't have previous data yet, assume it's alive
+            if last_time == 0 or last_rss == 0:
+                return True, "initializing"
+                
+            # Calculate time and memory differences
+            time_diff = current_time - last_time
+            rss_diff = abs(current_rss - last_rss)
+            
+            # If memory hasn't changed in 10 seconds, consider it frozen
+            if time_diff > 10.0 and rss_diff < 10:  # Less than 10KB change in 10s
+                return False, f"stream frozen (RSS changed by {rss_diff}KB in {time_diff:.1f}s)"
+                
+            return True, f"active (RSS: {current_rss}KB, Δ: {rss_diff}KB)"
             
         except (BrokenPipeError, ConnectionResetError, ProcessLookupError):
             return False
@@ -236,6 +293,7 @@ class StreamViewer:
         last_activity = time.monotonic()
         CHECK_INTERVAL = 2.0
         MAX_INACTIVITY = 10.0  # seconds
+        last_status = ""
         
         try:
             # Initial delay to let the stream stabilize
@@ -243,11 +301,19 @@ class StreamViewer:
             
             while not self._stop_event.is_set() and process.returncode is None:
                 try:
-                    # Check if stream is still alive
-                    if await self._is_stream_alive(process):
-                        last_activity = time.monotonic()
+                    # Check if stream is still alive and updating
+                    is_alive, status = await self._is_stream_alive(stream_id, process)
+                    current_time = time.monotonic()
+                    
+                    # Log status changes
+                    if status != last_status:
+                        logger.info(f"Stream {stream_id} status: {status}")
+                        last_status = status
+                    
+                    if is_alive:
+                        last_activity = current_time
                         await asyncio.sleep(CHECK_INTERVAL)
-                    elif (time.monotonic() - last_activity) > MAX_INACTIVITY:
+                    elif (current_time - last_activity) > MAX_INACTIVITY:
                         logger.warning(f"Stream {stream_id} inactive for {MAX_INACTIVITY}s, restarting...")
                         await self._terminate_process(process)
                         break
