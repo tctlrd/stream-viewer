@@ -234,7 +234,6 @@ class StreamViewer:
                 '--no-input-default-bindings',
                 '--gpu-context=wayland',  # Force Wayland backend
                 '--gpu-api=vulkan',       # Use Vulkan for better Wayland support
-                '--vd-lavacopy=no',       # Disable copy mode as it can cause issues
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
                 '--msg-level=all=info',
