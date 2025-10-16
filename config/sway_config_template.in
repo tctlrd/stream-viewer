@@ -7,12 +7,8 @@ focus_follows_mouse no
 
 swaybg_command -
 
-#output * res 1920x1080 bg #000000 solid_color
-
-output * disable
-output HDMI-A-2 enable
-output HDMI-A-2 resolution 1920x1080 position 0,0 transform 90 bg #000000 solid_color
-
+output HDMI-A-2 resolution 1920x1080 transform 90 bg #000000 solid_color
+workspace 1 output HDMI-A-2
 
 for_window [app_id="mpv"] {
     floating enable
