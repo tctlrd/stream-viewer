@@ -148,9 +148,6 @@ class StreamViewer:
             
             self.mpv_instances[stream.id] = process
             logger.info(f"Started stream {stream.id} (PID: {process.pid})")
-            
-            # Start monitoring the stream
-            asyncio.create_task(self._monitor_stream(stream.id, process))
             return True
             
         except Exception as e:
