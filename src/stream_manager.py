@@ -61,22 +61,46 @@ class StreamManager:
                 config_data = json.load(f)
             
             self.streams = {}
-            for stream_id, stream_data in config_data.get('streams', {}).items():
-                try:
-                    geo = stream_data.get('geometry', {})
-                    self.streams[stream_id] = StreamConfig(
-                        id=stream_id,
-                        url=stream_data['url'],
-                        geometry=StreamGeometry(
-                            width=geo.get('width', 640),
-                            height=geo.get('height', 360),
-                            x=geo.get('x', 0),
-                            y=geo.get('y', 0)
-                        ),
-                        options=stream_data.get('options', {})
-                    )
-                except KeyError as e:
-                    logger.error(f"Invalid configuration for stream {stream_id}: {e}")
+            streams_data = config_data.get('streams', [])
+            
+            # Handle both list and dict formats
+            if isinstance(streams_data, list):
+                for stream_data in streams_data:
+                    try:
+                        stream_id = stream_data['id']
+                        geo = stream_data.get('geometry', {})
+                        self.streams[stream_id] = StreamConfig(
+                            id=stream_id,
+                            url=stream_data['url'],
+                            geometry=StreamGeometry(
+                                width=geo.get('width', 640),
+                                height=geo.get('height', 360),
+                                x=geo.get('x', 0),
+                                y=geo.get('y', 0)
+                            ),
+                            options=stream_data.get('options', {})
+                        )
+                    except KeyError as e:
+                        logger.error(f"Missing required field in stream configuration: {e}")
+                        continue
+            elif isinstance(streams_data, dict):
+                for stream_id, stream_data in streams_data.items():
+                    try:
+                        geo = stream_data.get('geometry', {})
+                        self.streams[stream_id] = StreamConfig(
+                            id=stream_id,
+                            url=stream_data['url'],
+                            geometry=StreamGeometry(
+                                width=geo.get('width', 640),
+                                height=geo.get('height', 360),
+                                x=geo.get('x', 0),
+                                y=geo.get('y', 0)
+                            ),
+                            options=stream_data.get('options', {})
+                        )
+                    except KeyError as e:
+                        logger.error(f"Missing required field in stream configuration: {e}")
+                        continue
             
             logger.info(f"Loaded {len(self.streams)} stream configurations")
             return True
