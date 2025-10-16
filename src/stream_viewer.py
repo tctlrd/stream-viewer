@@ -391,18 +391,8 @@ class StreamViewer:
             return False
             
         try:
-            # Create a temporary directory for Sway socket
-            import tempfile
-            temp_dir = tempfile.mkdtemp(prefix='stream-viewer-sway-')
-            self._swaysock_path = os.path.join(temp_dir, 'sway-ipc.sock')
-            
-            # Start Sway with the generated config and custom socket
-            cmd = [
-                'sway',
-                '--config', self.sway_config_path,
-                '--socket', self._swaysock_path
-            ]
-            
+            # Start Sway with the generated config
+            cmd = ['sway', '--config', self.sway_config_path]
             logger.info(f"Starting Sway with command: {' '.join(cmd)}")
             
             self.sway_process = subprocess.Popen(
@@ -410,23 +400,21 @@ class StreamViewer:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                start_new_session=True,
-                env={**os.environ, 'SWAYSOCK': self._swaysock_path}
+                start_new_session=True
             )
             
-            # Wait for socket to be created
-            max_attempts = 10
-            for _ in range(max_attempts):
-                if os.path.exists(self._swaysock_path):
-                    break
-                time.sleep(0.5)
-            else:
-                logger.error("Timed out waiting for Sway socket")
+            # Wait a moment for Sway to start
+            time.sleep(2)
+            
+            # Get the default Sway socket path
+            user_id = os.getuid()
+            sway_pid = self.sway_process.pid
+            self._swaysock_path = f"/run/user/{user_id}/sway-ipc.{user_id}.{sway_pid}.sock"
+            
+            if not os.path.exists(self._swaysock_path):
+                logger.error(f"Could not find Sway socket at {self._swaysock_path}")
                 return False
-            
-            # Set SWAYSOCK for child processes
-            os.environ['SWAYSOCK'] = self._swaysock_path
-            
+                
             logger.info("Sway started successfully")
             return True
             
@@ -443,39 +431,27 @@ class StreamViewer:
                 if hasattr(self, '_swaysock_path') and os.path.exists(self._swaysock_path):
                     try:
                         subprocess.run(
-                            ['swaymsg', '-s', self._swaysock_path, 'exit'],
+                            ['swaymsg', 'exit'],
                             timeout=5,
                             check=True
                         )
-                        # Give it a moment to shut down
-                        self.sway_process.wait(timeout=10)
-                        logger.info("Sway stopped gracefully")
-                        return
-                    except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                        logger.warning("Graceful Sway shutdown failed, forcing...")
+                    except subprocess.TimeoutExpired:
+                        logger.warning("Sway did not exit gracefully, forcing termination")
+                        self.sway_process.terminate()
+                    except Exception as e:
+                        logger.error(f"Error stopping Sway: {e}")
                 
-                # Fall back to forceful termination
-                self.sway_process.terminate()
+                # Wait for process to terminate
                 try:
-                    self.sway_process.wait(timeout=5)
+                    self.sway_process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
+                    logger.warning("Sway did not terminate, killing process")
                     self.sway_process.kill()
-                    self.sway_process.wait()
+                
                 logger.info("Sway stopped")
                 
             except Exception as e:
-                logger.error(f"Error stopping Sway: {e}")
-            finally:
-                self.sway_process = None
-                # Clean up the socket file if it exists
-                if hasattr(self, '_swaysock_path') and os.path.exists(self._swaysock_path):
-                    try:
-                        temp_dir = os.path.dirname(self._swaysock_path)
-                        if temp_dir.startswith('/tmp/stream-viewer-sway-'):
-                            import shutil
-                            shutil.rmtree(temp_dir, ignore_errors=True)
-                    except Exception as e:
-                        logger.warning(f"Failed to clean up Sway socket directory: {e}")
+                logger.error(f"Error stopping Sway: {e}", exc_info=True)
 
     def run(self) -> None:
         """Run the stream viewer."""
