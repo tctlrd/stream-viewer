@@ -113,7 +113,7 @@ class StreamViewer:
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
                 '--really-quiet',
-                '--msg-level=all=warn,ffmpeg=no,vo/gpu=error',
+                '--msg-level=all=warn,ffmpeg=no,vo/gpu=error,vo/gpu/libplacebo=error',
                 f'--log-file={log_file}',
                 '--window-scale=1.0',
                 '--window-minimized=no',
