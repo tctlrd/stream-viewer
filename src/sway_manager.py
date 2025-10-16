@@ -56,18 +56,45 @@ class SwayManager:
             error_msg = f"Sway config template not found at {self.template_path}"
             logger.error(error_msg)
             raise FileNotFoundError(error_msg)
+        
+        # Load streams configuration
+        try:
+            with open(self.config_path, 'r') as f:
+                config = json.load(f)
+            streams = config.get('streams', [])
+        except Exception as e:
+            logger.error(f"Failed to load streams configuration: {e}")
+            return False
             
         try:
             # Read template with explicit encoding
             with open(self.template_path, 'r', encoding='utf-8') as f:
                 template = f.read()
             
+            # Generate window positioning commands for each stream
+            window_rules = []
+            for stream in streams:
+                geo = stream.get('geometry', {})
+                x = geo.get('x', 0)
+                y = geo.get('y', 0)
+                width = geo.get('width', 640)
+                height = geo.get('height', 360)
+                
+                # Create window rule for this stream
+                rule = f"for_window [title='{stream['id']}'] move position {x} {y}"
+                window_rules.append(rule)
+            
+            # Combine template with generated window rules
+            config_content = template
+            if window_rules:
+                config_content = template + "\n\n" + "\n\n".join(window_rules)
+            
             # Ensure the output directory exists
             os.makedirs(os.path.dirname(self.sway_config_path), exist_ok=True)
             
             # Write config file with explicit encoding
             with open(self.sway_config_path, 'w', encoding='utf-8') as f:
-                f.write(template)
+                f.write(config_content)
             
             # Set appropriate permissions
             os.chmod(self.sway_config_path, 0o644)
