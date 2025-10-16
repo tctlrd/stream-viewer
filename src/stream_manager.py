@@ -159,7 +159,7 @@ class StreamViewer:
         
         # Track last time we saw data
         last_data_time = time.monotonic()
-        MAX_STALL_TIME = 10.0  # Consider stream dead after 10 seconds of no data
+        MAX_STALL_TIME = 5.0  # Consider stream dead after 10 seconds of no data
         
         try:
             while process.returncode is None and not self._stop_event.is_set():
