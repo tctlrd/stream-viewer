@@ -154,11 +154,6 @@ class SwayManager:
         if self.sway_process is not None and self.sway_process.poll() is None:
             logger.info("Stopping Sway...")
             try:
-                # Try to exit Sway gracefully
-                self._send_sway_command('exit')
-                self.sway_process.wait(timeout=5)
-                logger.info("Sway stopped successfully")
-            except subprocess.TimeoutExpired:
                 logger.warning("Sway did not stop gracefully, terminating...")
                 self.sway_process.terminate()
                 try:
