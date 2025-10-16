@@ -78,7 +78,10 @@ class StreamViewer:
         
         # Load configuration if provided
         if config_path and os.path.exists(config_path):
-            self.load_config(config_path)
+            if not self.load_config(config_path):
+                logger.error("Failed to load configuration")
+            elif not self._generate_sway_config():
+                logger.error("Failed to generate Sway configuration")
         
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._handle_signal)
