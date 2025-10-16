@@ -173,21 +173,19 @@ class StreamViewer:
             return True
             
         except Exception as e:
-            logger.error(f"Error stopping stream {stream_id}: {e}")
             return False
 
     async def start_all(self) -> None:
         """Start all configured streams asynchronously."""
         if not self.streams:
-            logger.warning("No streams configured")
+            logger.warning("No streams configured to start")
             return
         
         self.running = True
-        self._stop_event.clear()
         
         # Start each stream with a small delay between them
         for stream_id, stream in self.streams.items():
-            if self._stop_event.is_set():
+            if not self.running:
                 break
             await self.start_stream(stream)
             await asyncio.sleep(0.3)  # Small delay to stagger stream starts
@@ -195,7 +193,6 @@ class StreamViewer:
     async def stop_all(self) -> None:
         """Stop all running streams asynchronously."""
         self.running = False
-        self._stop_event.set()
         
         # Stop all MPV instances in parallel
         tasks = [self.stop_stream(stream_id) 
