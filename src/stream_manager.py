@@ -217,25 +217,40 @@ class StreamViewer:
             except:
                 pass
 
-    def _get_frame_info(self, pid: int) -> Tuple[float, int]:
-        """Get frame count and timestamp from /proc/pid/status.
+    def _get_stream_stats(self, pid: int) -> Tuple[float, int, int]:
+        """Get stream statistics including frame drops and bitrate.
         
         Returns:
-            Tuple[float, int]: (timestamp, rss_kb)
+            Tuple[float, int, int]: (timestamp, frame_drop_count, bitrate_kbps)
         """
         try:
-            with open(f'/proc/{pid}/status') as f:
+            frame_drops = 0
+            bitrate = 0
+            
+            # Check /proc/net/dev for network interface statistics
+            with open('/proc/net/dev') as f:
                 for line in f:
-                    if line.startswith('RssAnon:'):
-                        rss = int(line.split()[1])  # in kB
-                        return time.monotonic(), rss
-            return time.monotonic(), 0
+                    if ':' in line:
+                        parts = line.split()
+                        if len(parts) >= 11:  # Received bytes is at index 1
+                            bitrate = int(parts[1]) // 1024  # Convert to KB/s
+            
+            # Check MPV's frame drop counter from stderr
+            with open(f'/proc/{pid}/fd/2', 'r') as f:
+                for line in f:
+                    if 'dropped frames' in line.lower():
+                        try:
+                            frame_drops = int(line.split('dropped frames:')[1].split(' ')[1])
+                        except (IndexError, ValueError):
+                            pass
+            
+            return time.monotonic(), frame_drops, bitrate
+            
         except (FileNotFoundError, ProcessLookupError):
-            # Process doesn't exist anymore
-            return time.monotonic(), 0
+            return time.monotonic(), 0, 0
         except Exception as e:
-            logger.warning(f"Error getting frame info for PID {pid}: {e}")
-            return time.monotonic(), 0
+            logger.warning(f"Error getting stream stats: {e}")
+            return time.monotonic(), 0, 0
 
     async def _is_stream_alive(self, stream_id: str, process: asyncio.subprocess.Process) -> Tuple[bool, str]:
         """Check if the stream is still active and updating.
@@ -247,35 +262,42 @@ class StreamViewer:
             # Check if process is still running
             if process.returncode is not None:
                 return False, f"process exited with code {process.returncode}"
-                
+            
             # Check if process is still responding
             try:
                 process.send_signal(0)  # Check if process is alive
             except ProcessLookupError:
                 return False, "process not found"
-                
-            # Initialize frame info tracking if needed
-            if not hasattr(self, '_last_frame_info'):
-                self._last_frame_info = {}
             
-            # Get current memory info
-            current_time, current_rss = self._get_frame_info(process.pid)
-            last_time, last_rss = self._last_frame_info.get(stream_id, (0, 0))
-            self._last_frame_info[stream_id] = (current_time, current_rss)
+            # Initialize stream stats tracking if needed
+            if not hasattr(self, '_stream_stats'):
+                self._stream_stats = {}
+            
+            # Get current stream stats
+            current_time, current_drops, current_bitrate = self._get_stream_stats(process.pid)
+            last_time, last_drops, last_bitrate = self._stream_stats.get(stream_id, (0, 0, 0))
+            self._stream_stats[stream_id] = (current_time, current_drops, current_bitrate)
             
             # If we don't have previous data yet, assume it's alive
-            if last_time == 0 or last_rss == 0:
+            if last_time == 0:
                 return True, "initializing"
-                
-            # Calculate time and memory differences
-            time_diff = current_time - last_time
-            rss_diff = abs(current_rss - last_rss)
             
-            # If memory hasn't changed in 10 seconds, consider it frozen
-            if time_diff > 10.0 and rss_diff < 10:  # Less than 10KB change in 10s
-                return False, f"stream frozen (RSS changed by {rss_diff}KB in {time_diff:.1f}s)"
+            time_diff = current_time - last_time
+            drops_diff = current_drops - last_drops
+            bitrate_diff = current_bitrate - last_bitrate
+            
+            # Check for stream health indicators
+            if time_diff > 30.0:  # Only check every 30 seconds
+                if drops_diff > 10:  # More than 10 frame drops in 30s
+                    return False, f"high frame drops: {drops_diff} in {time_diff:.1f}s"
                 
-            return True, f"active (RSS: {current_rss}KB, Δ: {rss_diff}KB)"
+                if current_bitrate == 0:  # No network activity
+                    return False, "no network activity"
+                
+                if abs(bitrate_diff) < 1.0:  # Bitrate hasn't changed
+                    return False, f"stream frozen (bitrate: {current_bitrate} KB/s)"
+            
+            return True, f"active (bitrate: {current_bitrate} KB/s, drops: {drops_diff})"
             
         except (BrokenPipeError, ConnectionResetError, ProcessLookupError):
             return False
@@ -286,13 +308,14 @@ class StreamViewer:
     async def _monitor_stream(self, stream_id: str, process: asyncio.subprocess.Process) -> None:
         """Monitor a single stream for health and stability."""
         last_activity = time.monotonic()
-        CHECK_INTERVAL = 2.0
-        MAX_INACTIVITY = 10.0  # seconds
+        CHECK_INTERVAL = 5.0  # Check every 5 seconds
+        MAX_INACTIVITY = 30.0  # Consider stream dead after 30s of inactivity
         last_status = ""
+        consecutive_failures = 0
         
         try:
             # Initial delay to let the stream stabilize
-            await asyncio.sleep(5.0)
+            await asyncio.sleep(10.0)
             
             while not self._stop_event.is_set() and process.returncode is None:
                 try:
@@ -306,13 +329,21 @@ class StreamViewer:
                         last_status = status
                     
                     if is_alive:
+                        consecutive_failures = 0
                         last_activity = current_time
-                        await asyncio.sleep(CHECK_INTERVAL)
-                    elif (current_time - last_activity) > MAX_INACTIVITY:
-                        logger.warning(f"Stream {stream_id} inactive for {MAX_INACTIVITY}s, restarting...")
-                        await self._terminate_process(process)
-                        break
+                    else:
+                        consecutive_failures += 1
+                        logger.warning(f"Stream {stream_id} issue detected: {status} (failure {consecutive_failures}/3)")
+                        
+                        if consecutive_failures >= 3:  # Require 3 consecutive failures
+                            logger.error(f"Stream {stream_id} failed 3 times, restarting...")
+                            break
                     
+                    # Check for network activity
+                    if current_time - last_activity > MAX_INACTIVITY:
+                        logger.warning(f"Stream {stream_id} inactive for {MAX_INACTIVITY}s, restarting...")
+                        break
+                        
                     # Read and log process output
                     try:
                         line = await asyncio.wait_for(process.stderr.readline(), timeout=1.0)
@@ -323,12 +354,27 @@ class StreamViewer:
                     except Exception as e:
                         logger.warning(f"Error reading from MPV {stream_id}: {e}")
                     
-                    # Wait for next check
                     await asyncio.sleep(CHECK_INTERVAL)
                     
                 except Exception as e:
-                    logger.error(f"Error monitoring stream {stream_id}: {e}")
-                    break
+                    logger.error(f"Error in monitor loop for {stream_id}: {e}")
+                    consecutive_failures += 1
+                    if consecutive_failures >= 3:
+                        break
+                    await asyncio.sleep(5.0)
+            
+            # If we get here, the stream needs to be restarted
+            if not self._stop_event.is_set() and process.returncode is None:
+                logger.warning(f"Restarting stream {stream_id} due to issues")
+                await self._terminate_process(process)
+                
+                # Wait a bit before restarting
+                await asyncio.sleep(2.0)
+                
+                # Restart the stream if we still have its config
+                if stream_id in self.streams:
+                    logger.info(f"Attempting to restart {stream_id}")
+                    await self.start_stream(self.streams[stream_id])
                     
         except asyncio.CancelledError:
             logger.debug(f"Monitoring for {stream_id} cancelled")
