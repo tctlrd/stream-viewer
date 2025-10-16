@@ -283,12 +283,11 @@ class StreamViewer:
             logger.info("Starting Stream Viewer")
             await self.start_all()
             
-            # Monitoring disabled for troubleshooting
-            # self._monitor_task = asyncio.create_task(self.monitor())
+            # Enable monitoring in the background
+            self._monitor_task = asyncio.create_task(self.monitor())
             
-            # Wait for stop event (or keep running without monitoring)
-            while not self._stop_event.is_set():
-                await asyncio.sleep(1)
+            # Wait for stop event
+            await self._stop_event.wait()
             
         except asyncio.CancelledError:
             logger.info("Shutdown requested")
