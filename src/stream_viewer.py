@@ -223,54 +223,75 @@ class StreamViewer:
             os.makedirs(log_dir, exist_ok=True)
             log_file = os.path.join(log_dir, f'mpv_{stream.id}.log')
             
-            # Build MPV command with Wayland support
-            cmd = [
+            # Build MPV command with basic options
+            mpv_cmd = [
                 'mpv',
-                '--no-cache',
                 '--no-config',
                 '--no-audio',
                 '--no-osc',
                 '--no-osd-bar',
                 '--no-input-default-bindings',
-                '--gpu-context=wayland',  # Force Wayland backend
-                '--gpu-api=vulkan',       # Use Vulkan for better Wayland support
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
-                '--msg-level=all=info',
                 f'--log-file={log_file}',
-                '--window-scale=1.0',
-                '--window-minimized=no',
-                '--no-window-dragging',
-                f'--geometry={stream.geometry.width}x{stream.geometry.height}+{stream.geometry.x}+{stream.geometry.y}',
-                '--force-window=immediate',  # Force window creation immediately
+                '--force-window=immediate',
                 stream.url
             ]
             
-            logger.info(f"Starting MPV with command: {' '.join(cmd)}")
+            # Escape quotes for the shell
+            mpv_cmd_str = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in mpv_cmd)
             
-            # Set up environment for Wayland
-            env = os.environ.copy()
-            env['SDL_VIDEODRIVER'] = 'wayland'
-            env['QT_QPA_PLATFORM'] = 'wayland'
-            env['GDK_BACKEND'] = 'wayland'
-            env['MOZ_ENABLE_WAYLAND'] = '1'
-            env['_JAVA_AWT_WM_NONREPARENTING'] = '1'
-            env['CLUTTER_BACKEND'] = 'wayland'
+            # Create a shell script to run MPV
+            script_content = f'''#!/bin/sh
+            # Set up environment
+            export WAYLAND_DISPLAY=wayland-0
+            unset DISPLAY
             
-            # Start MPV process with error handling and Wayland environment
+            # Run MPV with the specified geometry
+            {mpv_cmd_str} \
+                --geometry={stream.geometry.width}x{stream.geometry.height}+{stream.geometry.x}+{stream.geometry.y}
+            '''
+            
+            # Create a temporary script
+            import tempfile
+            script_fd, script_path = tempfile.mkstemp(suffix='.sh')
+            with os.fdopen(script_fd, 'w') as f:
+                f.write(script_content)
+            os.chmod(script_path, 0o755)
+            
+            # Build swaymsg command to launch the script in a new terminal
+            cmd = [
+                'swaymsg',
+                '-t', 'command',
+                'exec',
+                f'exec {script_path}'
+            ]
+            
+            logger.info(f"Starting MPV via swaymsg with command: {' '.join(cmd)}")
+            
+            # Start MPV process via swaymsg
             try:
                 process = subprocess.Popen(
                     cmd,
-                    env=env,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
-                    close_fds=True,
-                    start_new_session=True
+                    shell=False
                 )
                 
-                # Wait for window to be created
+                # Wait a moment for the window to be created
                 time.sleep(1.0)
+                
+                # Clean up the temporary script after a short delay
+                def cleanup_script():
+                    time.sleep(5)  # Give MPV time to start
+                    try:
+                        os.unlink(script_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to clean up temporary script: {e}")
+                
+                import threading
+                threading.Thread(target=cleanup_script, daemon=True).start()
                 
                 # Check if process started successfully
                 if process.poll() is not None:
