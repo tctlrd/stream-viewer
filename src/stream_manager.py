@@ -4,9 +4,8 @@ import json
 import logging
 import os
 import signal
-import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple, Tuple
+from typing import Dict
 
 # Configure logging
 def setup_logging():
@@ -107,13 +106,12 @@ class StreamViewer:
                 '--no-audio',
                 '--no-osc',
                 '--no-osd-bar',
-                '--no-input-default-bindings',
                 '--profile=low-latency',
                 '--hwdec=vaapi',
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
                 '--really-quiet',
-                '--msg-level=all=warn,ffmpeg=no',
+                '--msg-level=all=warn,ffmpeg/demuxer=no',
                 f'--log-file={log_file}',
                 '--window-scale=1.0',
                 '--window-minimized=no',
