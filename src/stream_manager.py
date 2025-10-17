@@ -111,7 +111,7 @@ class StreamViewer:
                 '--input-vo-keyboard=no',
                 f'--title={stream.id}',
                 '--really-quiet',
-                '--msg-level=all=warn,ffmpeg/demuxer=no',
+                '--msg-level=ffmpeg/demuxer=no',
                 f'--log-file={log_file}',
                 '--window-scale=1.0',
                 '--window-minimized=no',
